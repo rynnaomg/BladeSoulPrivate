@@ -1,6 +1,6 @@
 -- main.lua
 -- Main loader for Forsaken Hub
--- Version: 1.0
+-- Version: 1.1
 
 -- Load required modules
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()

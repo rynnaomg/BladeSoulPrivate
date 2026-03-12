@@ -7,10 +7,22 @@ local Config = {}
 Config.GameName = "Forsaken Modded"
 Config.PlaceID = 124499025066593
 
+-- Group settings for Staff List
+Config.StaffGroup = {
+    GroupID = 1031849230,
+    GroupName = "Cool Math Games Productions",
+    Ranks = {
+        ["Testers"] = true,
+        ["Moderator"] = true,
+        ["Developer"] = true,
+        ["Owner"] = true
+    }
+}
+
 -- GUI settings
 Config.GUI = {
     Title = "Forsaken Hub",
-    Version = "1.0.0",
+    Version = "1.1",
     Author = "rynnaomg"
 }
 

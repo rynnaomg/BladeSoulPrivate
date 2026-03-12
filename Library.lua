@@ -139,4 +139,63 @@ function Library:CreateButton(text, size, position, color, parent, callback)
     return button
 end
 
+-- Create toggle switch
+function Library:CreateToggle(text, size, position, parent, default, callback)
+    local container = Instance.new("Frame")
+    container.Size = size
+    container.Position = position
+    container.BackgroundTransparency = 1
+    container.Parent = parent
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0, 150, 1, 0)
+    label.Position = UDim2.new(0, 0, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = self.Theme.Text
+    label.TextSize = 14
+    label.Font = Enum.Font.Gotham
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = container
+    
+    local toggleBg = Instance.new("Frame")
+    toggleBg.Size = UDim2.new(0, 50, 0, 24)
+    toggleBg.Position = UDim2.new(1, -60, 0.5, -12)
+    toggleBg.BackgroundColor3 = self.Theme.Darker
+    toggleBg.Parent = container
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(1, 0)
+    toggleCorner.Parent = toggleBg
+    
+    local toggleCircle = Instance.new("Frame")
+    toggleCircle.Size = UDim2.new(0, 20, 0, 20)
+    toggleCircle.Position = default and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+    toggleCircle.BackgroundColor3 = default and self.Theme.Cyan or self.Theme.TextSecondary
+    toggleCircle.Parent = toggleBg
+    
+    local circleCorner = Instance.new("UICorner")
+    circleCorner.CornerRadius = UDim.new(1, 0)
+    circleCorner.Parent = toggleCircle
+    
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, 0, 1, 0)
+    button.BackgroundTransparency = 1
+    button.Text = ""
+    button.Parent = container
+    
+    local toggled = default
+    
+    button.MouseButton1Click:Connect(function()
+        toggled = not toggled
+        local goalPos = toggled and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+        local goalColor = toggled and self.Theme.Cyan or self.Theme.TextSecondary
+        
+        self.Services.Tween:Create(toggleCircle, TweenInfo.new(0.2), {Position = goalPos, BackgroundColor3 = goalColor}):Play()
+        callback(toggled)
+    end)
+    
+    return container
+end
+
 return Library
