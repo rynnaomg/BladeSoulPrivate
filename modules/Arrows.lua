@@ -1,6 +1,6 @@
 -- modules/Arrows.lua
 -- Arrow module for Forsaken Hub
--- Version: 2.0 (Bulletproof error handling)
+-- Version: 2.1 (Fixed arrow image, center position, always visible)
 
 local Arrows = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
@@ -64,34 +64,42 @@ local function createArrowGUI()
     end
 end
 
--- Create a single arrow
+-- Create a single arrow (smaller, better image)
 local function createArrow(targetPlayer, targetTeam)
     if not arrowGui then return nil end
     
     local success, arrow = pcall(function()
-        local img = Instance.new("ImageLabel")
-        img.Name = "Arrow_" .. targetPlayer.Name
-        img.Size = UDim2.new(0, 40, 0, 40)
-        img.Position = UDim2.new(0.5, -20, 0.3, -20)
-        img.BackgroundTransparency = 1
-        img.Image = "rbxassetid://6031280882"
-        img.ImageColor3 = targetTeam == "Killers" and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(100, 255, 100)
-        img.Rotation = 0
-        img.Visible = false
-        img.Parent = arrowGui
+        -- Main arrow container
+        local container = Instance.new("Frame")
+        container.Name = "Arrow_" .. targetPlayer.Name
+        container.Size = UDim2.new(0, 30, 0, 30)  -- Smaller: 30x30 instead of 40x40
+        container.Position = UDim2.new(0.5, -15, 0.5, -15)  -- Exactly center
+        container.BackgroundTransparency = 1
+        container.Parent = arrowGui
         
+        -- Arrow image (better arrow image)
+        local img = Instance.new("ImageLabel")
+        img.Name = "ArrowImage"
+        img.Size = UDim2.new(1, 0, 1, 0)
+        img.BackgroundTransparency = 1
+        img.Image = "rbxassetid://6031090990"  -- Better arrow image (pointing up)
+        img.ImageColor3 = targetTeam == "Killers" and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 80)
+        img.Rotation = 0
+        img.Parent = container
+        
+        -- Distance text (smaller)
         local distanceText = Instance.new("TextLabel")
         distanceText.Name = "Distance"
-        distanceText.Size = UDim2.new(1, 0, 0, 20)
-        distanceText.Position = UDim2.new(0, 0, 1, 0)
+        distanceText.Size = UDim2.new(1, 0, 0, 16)  -- Smaller: 16 height
+        distanceText.Position = UDim2.new(0, 0, 1, 2)
         distanceText.BackgroundTransparency = 1
         distanceText.Text = ""
         distanceText.TextColor3 = Config.Theme.Text
-        distanceText.TextSize = 12
+        distanceText.TextSize = 10  -- Smaller text
         distanceText.Font = Enum.Font.GothamBold
-        distanceText.Parent = img
+        distanceText.Parent = container
         
-        return img
+        return container
     end)
     
     return success and arrow
@@ -200,7 +208,7 @@ local function updateArrows()
         end
     end
     
-    -- Get camera position safely
+    -- Get camera position
     local cameraPos = camera.CFrame.Position
     
     -- Update arrows
@@ -216,12 +224,9 @@ local function updateArrows()
             end
             
             if arrow then
-                -- Safely get target position
+                -- Get target position
                 local targetPos = target.rootPart.Position
                 local direction = (targetPos - cameraPos).unit
-                
-                -- Check if on screen
-                local screenPos, onScreen = camera:WorldToViewportPoint(targetPos)
                 
                 -- Calculate distance
                 local distance = (targetPos - cameraPos).magnitude
@@ -233,38 +238,41 @@ local function updateArrows()
                     text.Text = distanceText .. "m"
                 end
                 
-                -- If on screen, hide arrow
-                if onScreen and screenPos.Z > 0 then
-                    arrow.Visible = false
-                else
-                    arrow.Visible = true
-                    
-                    -- Calculate angle
-                    local cameraDirection = camera.CFrame.LookVector
-                    local toTarget = (targetPos - cameraPos).unit
-                    
-                    local cameraAngle = math.atan2(-cameraDirection.X, -cameraDirection.Z)
-                    local targetAngle = math.atan2(-toTarget.X, -toTarget.Z)
-                    
-                    local angle = (targetAngle - cameraAngle) * (180 / math.pi)
-                    if angle > 180 then angle = angle - 360 end
-                    if angle < -180 then angle = angle + 360 end
-                    
-                    -- Position arrow
-                    local centerX = arrowGui.AbsoluteSize.X / 2
-                    local centerY = arrowGui.AbsoluteSize.Y * 0.3
-                    
-                    local radius = 120
-                    local angleRad = math.rad(angle)
-                    
-                    local x = centerX + math.sin(angleRad) * radius
-                    local y = centerY - math.cos(angleRad) * radius
-                    
-                    x = math.clamp(x, 40, arrowGui.AbsoluteSize.X - 40)
-                    y = math.clamp(y, 40, arrowGui.AbsoluteSize.Y - 40)
-                    
-                    arrow.Position = UDim2.new(0, x - 20, 0, y - 20)
-                    arrow.Rotation = angle
+                -- ALWAYS show arrow, even when on screen
+                arrow.Visible = true
+                
+                -- Calculate angle
+                local cameraDirection = camera.CFrame.LookVector
+                local toTarget = (targetPos - cameraPos).unit
+                
+                local cameraAngle = math.atan2(-cameraDirection.X, -cameraDirection.Z)
+                local targetAngle = math.atan2(-toTarget.X, -toTarget.Z)
+                
+                local angle = (targetAngle - cameraAngle) * (180 / math.pi)
+                if angle > 180 then angle = angle - 360 end
+                if angle < -180 then angle = angle + 360 end
+                
+                -- Position arrow in a circle AROUND EXACT CENTER
+                local centerX = arrowGui.AbsoluteSize.X / 2
+                local centerY = arrowGui.AbsoluteSize.Y / 2  -- EXACT CENTER (where shift lock appears)
+                
+                local radius = 80  -- Smaller radius
+                local angleRad = math.rad(angle)
+                
+                -- Calculate position in circle around center
+                local x = centerX + math.sin(angleRad) * radius
+                local y = centerY - math.cos(angleRad) * radius
+                
+                -- Keep arrow on screen
+                x = math.clamp(x, 20, arrowGui.AbsoluteSize.X - 20)
+                y = math.clamp(y, 20, arrowGui.AbsoluteSize.Y - 20)
+                
+                arrow.Position = UDim2.new(0, x - 15, 0, y - 15)  -- Center the 30px arrow
+                
+                -- Rotate arrow image inside container
+                local img = arrow:FindFirstChild("ArrowImage")
+                if img then
+                    img.Rotation = angle
                 end
             end
         end
