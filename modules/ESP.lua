@@ -1,25 +1,68 @@
 -- modules/ESP.lua
 -- ESP module for Forsaken Hub
--- Version: 1.1 (Fixed nil error)
+-- Version: 2.0 (Clean design, no flickering)
 
 local ESP = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
 local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua"))()
 
 local players = Library.Services.Players
-local runService = game:GetService("RunService")  -- Fixed: Get service directly
 local workspace = game:GetService("Workspace")
+local localPlayer = players.LocalPlayer
 
 local enabled = false
 local espConnections = {}
 local espObjects = {}
-local updateLoop = nil
+local currentCharacters = {}
 
--- Create ESP highlight for a character
-local function createESP(character, playerName, team)
+-- Clean up ESP for a specific character
+local function cleanupCharacterESP(character)
+    if not character then return end
+    
+    -- Remove highlight
+    local highlight = character:FindFirstChild("ForsakenESP")
+    if highlight then
+        pcall(function() highlight:Destroy() end)
+    end
+    
+    -- Remove billboard
+    local billboard = character:FindFirstChild("ForsakenESPName")
+    if billboard then
+        pcall(function() billboard:Destroy() end)
+    end
+end
+
+-- Clean up all ESP
+local function cleanupAllESP()
+    for obj in pairs(espObjects) do
+        if obj and obj.Parent then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+    table.clear(espObjects)
+    table.clear(currentCharacters)
+end
+
+-- Create ESP highlight only (no name tag)
+local function createESP(character, team)
     if not character or not character:FindFirstChild("Humanoid") then return end
     
-    -- Main highlight box
+    -- Check if this is local player
+    local isLocalPlayer = false
+    for _, plr in pairs(players:GetPlayers()) do
+        if plr.Character == character and plr == localPlayer then
+            isLocalPlayer = true
+            break
+        end
+    end
+    
+    -- Skip local player
+    if isLocalPlayer then return end
+    
+    -- Remove old ESP if exists
+    cleanupCharacterESP(character)
+    
+    -- Create highlight box only (no name tag)
     local highlight = Instance.new("Highlight")
     highlight.Name = "ForsakenESP"
     highlight.Parent = character
@@ -27,57 +70,15 @@ local function createESP(character, playerName, team)
     
     -- Team colors
     if team == "Killers" then
-        highlight.FillColor = Color3.fromRGB(255, 50, 50)  -- Red for killers
-        highlight.OutlineColor = Color3.fromRGB(200, 0, 0)
+        highlight.FillColor = Color3.fromRGB(255, 80, 80)  -- Softer red
+        highlight.OutlineColor = Color3.fromRGB(200, 40, 40)
     elseif team == "Survivors" then
-        highlight.FillColor = Color3.fromRGB(50, 255, 50)  -- Green for survivors
-        highlight.OutlineColor = Color3.fromRGB(0, 200, 0)
-    else
-        highlight.FillColor = Config.Theme.Cyan
-        highlight.OutlineColor = Config.Theme.CyanDark
+        highlight.FillColor = Color3.fromRGB(80, 255, 80)  -- Softer green
+        highlight.OutlineColor = Color3.fromRGB(40, 200, 40)
     end
     
-    highlight.FillTransparency = 0.5
-    highlight.OutlineTransparency = 0
-    
-    -- Name tag (BillboardGui)
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "ForsakenESPName"
-    billboard.Parent = character
-    billboard.Size = UDim2.new(0, 200, 0, 50)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.AlwaysOnTop = true
-    billboard.ResetOnSpawn = false  -- Prevent cleanup
-    
-    local nameFrame = Instance.new("Frame")
-    nameFrame.Size = UDim2.new(1, 0, 1, 0)
-    nameFrame.BackgroundColor3 = Config.Theme.Background
-    nameFrame.BackgroundTransparency = 0.3
-    nameFrame.Parent = billboard
-    
-    local nameCorner = Instance.new("UICorner")
-    nameCorner.CornerRadius = UDim.new(0, 4)
-    nameCorner.Parent = nameFrame
-    
-    local nameLabel = Instance.new("TextLabel")
-    nameLabel.Size = UDim2.new(1, 0, 0, 20)
-    nameLabel.Position = UDim2.new(0, 0, 0, 0)
-    nameLabel.BackgroundTransparency = 1
-    nameLabel.Text = playerName
-    nameLabel.TextColor3 = Config.Theme.Text
-    nameLabel.TextSize = 14
-    nameLabel.Font = Enum.Font.GothamBold
-    nameLabel.Parent = nameFrame
-    
-    local teamLabel = Instance.new("TextLabel")
-    teamLabel.Size = UDim2.new(1, 0, 0, 16)
-    teamLabel.Position = UDim2.new(0, 0, 0, 20)
-    teamLabel.BackgroundTransparency = 1
-    teamLabel.Text = "[" .. team .. "]"
-    teamLabel.TextColor3 = team == "Killers" and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(100, 255, 100)
-    teamLabel.TextSize = 12
-    teamLabel.Font = Enum.Font.Gotham
-    teamLabel.Parent = nameFrame
+    highlight.FillTransparency = 0.4
+    highlight.OutlineTransparency = 0.2
     
     return highlight
 end
@@ -86,58 +87,59 @@ end
 local function updateESP()
     if not enabled then return end
     
-    -- Clear old ESP
-    for obj in pairs(espObjects) do
-        if obj and obj.Parent then
-            pcall(function() obj:Destroy() end)
-        end
-    end
-    table.clear(espObjects)
+    -- Track current characters to detect removed ones
+    local newCharacters = {}
     
     -- Check if workspace and Players folder exist
     local playersFolder = workspace:FindFirstChild("Players")
-    if not playersFolder then return end
+    if not playersFolder then 
+        cleanupAllESP()
+        return 
+    end
     
-    -- Check Killers
+    -- Process Killers
     local killersFolder = playersFolder:FindFirstChild("Killers")
     if killersFolder then
         for _, character in ipairs(killersFolder:GetChildren()) do
             if character:IsA("Model") and character:FindFirstChild("Humanoid") then
-                -- Find player name
-                local playerName = "Unknown"
-                for _, plr in pairs(players:GetPlayers()) do
-                    if plr.Character == character then
-                        playerName = plr.Name
-                        break
-                    end
-                end
+                newCharacters[character] = "Killers"
                 
-                local esp = createESP(character, playerName, "Killers")
-                if esp then
-                    espObjects[esp] = true
+                -- Only create if not already exists
+                if not currentCharacters[character] then
+                    local esp = createESP(character, "Killers")
+                    if esp then
+                        espObjects[esp] = true
+                        currentCharacters[character] = "Killers"
+                    end
                 end
             end
         end
     end
     
-    -- Check Survivors
+    -- Process Survivors
     local survivorsFolder = playersFolder:FindFirstChild("Survivors")
     if survivorsFolder then
         for _, character in ipairs(survivorsFolder:GetChildren()) do
             if character:IsA("Model") and character:FindFirstChild("Humanoid") then
-                local playerName = "Unknown"
-                for _, plr in pairs(players:GetPlayers()) do
-                    if plr.Character == character then
-                        playerName = plr.Name
-                        break
+                newCharacters[character] = "Survivors"
+                
+                -- Only create if not already exists
+                if not currentCharacters[character] then
+                    local esp = createESP(character, "Survivors")
+                    if esp then
+                        espObjects[esp] = true
+                        currentCharacters[character] = "Survivors"
                     end
                 end
-                
-                local esp = createESP(character, playerName, "Survivors")
-                if esp then
-                    espObjects[esp] = true
-                end
             end
+        end
+    end
+    
+    -- Clean up characters that no longer exist
+    for character in pairs(currentCharacters) do
+        if not newCharacters[character] then
+            cleanupCharacterESP(character)
+            currentCharacters[character] = nil
         end
     end
 end
@@ -150,15 +152,15 @@ function ESP:Toggle(state)
         -- Initial update
         updateESP()
         
-        -- Use a loop instead of Heartbeat to avoid nil issues
+        -- Update loop (every 0.5 seconds instead of 1 for smoother transitions)
         spawn(function()
             while enabled do
                 updateESP()
-                task.wait(1)  -- Update every second instead of every frame
+                task.wait(0.5)
             end
         end)
         
-        -- Listen for character additions (with error handling)
+        -- Listen for changes
         local playersFolder = workspace:FindFirstChild("Players")
         if playersFolder then
             local killersFolder = playersFolder:FindFirstChild("Killers")
@@ -180,7 +182,7 @@ function ESP:Toggle(state)
             end
         end
         
-        -- Also listen for when Players folder changes (new round)
+        -- Listen for new rounds
         local conn = workspace.ChildAdded:Connect(function(child)
             if child.Name == "Players" then
                 task.wait(0.5)
@@ -190,19 +192,12 @@ function ESP:Toggle(state)
         table.insert(espConnections, conn)
         
     else
-        -- Clean up connections
+        -- Clean up
         for _, conn in ipairs(espConnections) do
             pcall(function() conn:Disconnect() end)
         end
         table.clear(espConnections)
-        
-        -- Clean up ESP objects
-        for obj in pairs(espObjects) do
-            if obj and obj.Parent then
-                pcall(function() obj:Destroy() end)
-            end
-        end
-        table.clear(espObjects)
+        cleanupAllESP()
     end
 end
 
