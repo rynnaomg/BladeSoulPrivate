@@ -1,6 +1,6 @@
 -- modules/StaffList.lua
 -- Staff List module for Forsaken Hub
--- Version: 3.0 (AUTO-DETECT RANKS)
+-- Version: 4.0 (CUSTOM RANK NUMBERS)
 
 local StaffList = {}
 local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua"))()
@@ -11,64 +11,25 @@ local tween = Library.Services.Tween
 local screenGui = nil
 local staffListFrame = nil
 local enabled = false
-local updateConnection = nil
 
--- Debug function
+-- ===== ТВОИ РЕАЛЬНЫЕ НОМЕРА РАНГОВ ИЗ ЛОГОВ =====
+-- Из твоих логов видно:
+-- Moderator = 225
+-- Другие ранги нужно узнать (зайди на сервер с разными акками)
+local STAFF_RANKS = {
+    [225] = "Moderator",  -- Твой ранг (Moderator)
+    -- Добавим остальные когда узнаешь:
+    -- [???] = "Testers",
+    -- [???] = "Developer",
+    -- [255] = "Owner",     -- Owner обычно 255
+}
+
+-- Debug функция
 local function debugPrint(...)
     print("[StaffList Debug]", ...)
 end
 
--- We'll auto-detect ranks! This will be filled dynamically
-local STAFF_RANKS = {}  -- Empty for now, will be filled
-
--- Function to learn ranks
-local function learnRanks()
-    debugPrint("=== LEARNING RANKS ===")
-    local foundRanks = {}
-    
-    -- Check all players
-    for _, plr in pairs(players:GetPlayers()) do
-        local rankNum = plr:GetRankInGroup(Config.StaffGroup.GroupID)
-        if rankNum and rankNum > 0 then
-            -- Try to get rank name (if possible)
-            local rankName = "Unknown"
-            local success, name = pcall(function()
-                return plr:GetRoleInGroup(Config.StaffGroup.GroupID)
-            end)
-            if success and name and name ~= "Guest" then
-                rankName = name
-            end
-            
-            debugPrint("Found:", plr.Name, "-> Rank", rankNum, "(" .. rankName .. ")")
-            foundRanks[rankNum] = rankName
-        end
-    end
-    
-    -- Match with our target ranks from config
-    -- We'll try to map them based on common patterns
-    local targetRanks = {"Testers", "Moderator", "Developer", "Owner"}
-    
-    -- Sort found ranks by number (lower numbers first)
-    local sorted = {}
-    for num, name in pairs(foundRanks) do
-        table.insert(sorted, {num = num, name = name})
-    end
-    table.sort(sorted, function(a, b) return a.num < b.num end)
-    
-    -- Try to assign them in order
-    for i, targetRank in ipairs(targetRanks) do
-        if sorted[i] then
-            STAFF_RANKS[sorted[i].num] = targetRank
-            debugPrint("✅ Mapped rank", sorted[i].num, "->", targetRank)
-        else
-            debugPrint("⚠️ Could not find rank for", targetRank)
-        end
-    end
-    
-    debugPrint("=== LEARNING COMPLETE ===")
-end
-
--- Function to check if player is staff
+-- Функция проверки staff (исправленная)
 local function isStaff(targetPlayer)
     if not targetPlayer then return false, nil end
     
@@ -79,27 +40,24 @@ local function isStaff(targetPlayer)
     debugPrint("Player", targetPlayer.Name, "Rank number:", rankNumber or "nil")
     
     if success and rankNumber and rankNumber > 0 then
-        -- Check if this rank number is in our staff list
+        -- Проверяем по нашим известным номерам
         local rankName = STAFF_RANKS[rankNumber]
         if rankName then
             debugPrint("✅ Staff found:", rankName, "(rank", rankNumber, ")")
             return true, rankName
         else
-            debugPrint("❌ Rank", rankNumber, "not in staff list (needs mapping)")
+            debugPrint("❌ Unknown rank number:", rankNumber)
+            -- Временно показываем как Unknown[номер]
+            return true, "Rank " .. rankNumber
         end
     end
     
     return false, nil
 end
 
--- Function to update staff list
+-- Функция обновления списка
 local function updateStaffList()
     if not staffListFrame or not enabled then return end
-    
-    -- Learn ranks if we haven't yet
-    if not next(STAFF_RANKS) then
-        learnRanks()
-    end
     
     -- Clear old entries
     for _, v in pairs(staffListFrame:GetChildren()) do
@@ -122,15 +80,12 @@ local function updateStaffList()
         end
     end
     
-    -- Sort entries by rank priority
+    -- Sort entries
     table.sort(entries, function(a, b)
-        local rankPriority = {
-            ["Owner"] = 1,
-            ["Developer"] = 2,
-            ["Moderator"] = 3,
-            ["Testers"] = 4
-        }
-        return (rankPriority[a.rank] or 5) < (rankPriority[b.rank] or 5)
+        -- Сортируем по приоритету (Moderator выше остальных)
+        if a.rank == "Moderator" then return true end
+        if b.rank == "Moderator" then return false end
+        return a.rank < b.rank
     end)
     
     -- Create entries
@@ -165,16 +120,14 @@ local function updateStaffList()
         entryCorner.CornerRadius = UDim.new(0, 4)
         entryCorner.Parent = entryFrame
         
-        -- Rank color indicator
+        -- Rank color (Moderator = желтый)
         local rankColor = Config.Theme.Cyan
-        if rank == "Owner" then
-            rankColor = Color3.fromRGB(255, 50, 50)
-        elseif rank == "Developer" then
-            rankColor = Color3.fromRGB(50, 255, 50)
-        elseif rank == "Moderator" then
-            rankColor = Color3.fromRGB(255, 255, 50)
-        elseif rank == "Testers" then
-            rankColor = Color3.fromRGB(50, 150, 255)
+        if rank == "Moderator" then
+            rankColor = Color3.fromRGB(255, 255, 50)  -- Желтый
+        elseif rank:find("Owner") then
+            rankColor = Color3.fromRGB(255, 50, 50)    -- Красный
+        elseif rank:find("Developer") then
+            rankColor = Color3.fromRGB(50, 255, 50)    -- Зеленый
         end
         
         local colorBar = Instance.new("Frame")
@@ -202,7 +155,7 @@ local function updateStaffList()
         yOffset = yOffset + 30
     end
     
-    -- Adjust staff list size
+    -- Adjust size
     if #entries > 0 then
         staffListFrame.Parent.Size = UDim2.new(0, maxWidth, 0, yOffset + 5)
         staffListFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 5)
@@ -223,7 +176,7 @@ local function updateStaffList()
     end
 end
 
--- Function to create staff list
+-- Create staff list
 function StaffList:Create(parentGui)
     screenGui = parentGui
     
@@ -306,8 +259,6 @@ function StaffList:Toggle(state)
     mainFrame.Visible = state
     
     if state then
-        -- Learn ranks first
-        learnRanks()
         updateStaffList()
         
         players.PlayerAdded:Connect(function()
