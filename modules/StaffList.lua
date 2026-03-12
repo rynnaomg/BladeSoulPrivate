@@ -1,6 +1,6 @@
 -- modules/StaffList.lua
 -- Staff List module for Forsaken Hub
--- Version: 1.2 (with debug)
+-- Version: 1.3 (FIXED)
 
 local StaffList = {}
 local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua"))()
@@ -18,39 +18,35 @@ local function debugPrint(...)
     print("[StaffList Debug]", ...)
 end
 
--- Function to check if player is staff
+-- Function to check if player is staff - FIXED VERSION
 local function isStaff(userId)
-    -- Method 1: GetRankInGroup
+    -- Get the player object first
+    local targetPlayer = players:GetPlayerByUserId(userId)
+    if not targetPlayer then
+        debugPrint("Player not found for userId:", userId)
+        return false, nil
+    end
+    
+    -- Use :GetRankInGroup on the player object, not on Players service
     local success, rank = pcall(function()
-        return players:GetRankInGroup(Config.StaffGroup.GroupID, userId)
+        return targetPlayer:GetRankInGroup(Config.StaffGroup.GroupID)
     end)
     
-    debugPrint("Player", userId, "Rank from GetRankInGroup:", rank or "nil", "Success:", success)
+    debugPrint("Player", targetPlayer.Name, "Rank from player:GetRankInGroup():", rank or "nil", "Success:", success)
     
     if success and rank then
-        -- Check if rank is in our list
-        if Config.StaffGroup.Ranks[rank] == true then
-            debugPrint("✅ Staff found:", rank)
-            return true, rank
+        -- Convert rank to string and check
+        local rankName = tostring(rank)
+        debugPrint("Rank name:", rankName)
+        
+        if Config.StaffGroup.Ranks[rankName] == true then
+            debugPrint("✅ Staff found:", rankName)
+            return true, rankName
         else
-            debugPrint("❌ Not in staff ranks:", rank)
+            debugPrint("❌ Not in staff ranks:", rankName)
         end
     else
         debugPrint("❌ Failed to get rank")
-    end
-    
-    -- Method 2: Try GetRoleInGroup as backup
-    local success2, role = pcall(function()
-        return players:GetRoleInGroup(Config.StaffGroup.GroupID, userId)
-    end)
-    
-    debugPrint("Player", userId, "Role from GetRoleInGroup:", role or "nil", "Success:", success2)
-    
-    if success2 and role then
-        if Config.StaffGroup.Ranks[role] == true then
-            debugPrint("✅ Staff found via role:", role)
-            return true, role
-        end
     end
     
     return false, nil
@@ -308,21 +304,12 @@ function StaffList:Toggle(state)
         end)
         
         -- Update every 5 seconds
-        if updateConnection then
-            updateConnection:Disconnect()
-        end
-        
         spawn(function()
             while enabled do
                 task.wait(5)
                 updateStaffList()
             end
         end)
-    else
-        if updateConnection then
-            updateConnection:Disconnect()
-            updateConnection = nil
-        end
     end
 end
 
