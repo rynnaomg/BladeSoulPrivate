@@ -1,6 +1,6 @@
 -- modules/StaffList.lua
 -- Staff List module for Forsaken Hub
--- Version: 5.1 (BIGGER HEIGHT)
+-- Version: 5.2 (ALL RANKS READY)
 
 local StaffList = {}
 local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua"))()
@@ -15,9 +15,13 @@ local staffListFrame = nil
 local enabled = false
 
 -- ===== ТВОИ РЕАЛЬНЫЕ НОМЕРА РАНГОВ =====
+-- ЗДЕСЬ НУЖНО ВПИСАТЬ ВСЕ ЧИСЛА!
 local STAFF_RANKS = {
-    [225] = "Moderator",  -- Твой ранг
-    -- Добавим остальные когда узнаешь
+    [225] = "Moderator",  -- ✅ Твой ранг (уже работает)
+    [???] = "Testers",    -- ⚠️ ВПИШИ СЮДА НОМЕР Testers
+    [???] = "Developer",  -- ⚠️ ВПИШИ СЮДА НОМЕР Developer
+    [255] = "Owner",      -- Owner обычно 255 [citation:4]
+    -- Добавь другие ранги если есть
 }
 
 -- Debug функция
@@ -25,8 +29,8 @@ local function debugPrint(...)
     print("[StaffList Debug]", ...)
 end
 
--- Функция проверки staff через GroupService (офлайн)
-local function checkStaffOffline(userId)
+-- Функция проверки staff
+local function checkStaff(userId)
     local success, groups = pcall(function()
         return GroupService:GetGroupsAsync(userId)
     end)
@@ -37,11 +41,16 @@ local function checkStaffOffline(userId)
     
     for _, groupData in ipairs(groups) do
         if groupData.Id == Config.StaffGroup.GroupID then
-            local rankNumber = groupData.Rank
+            local rankNumber = groupData.Rank  -- Это число!
+            
+            -- Проверяем по нашим известным номерам
             local rankName = STAFF_RANKS[rankNumber]
             if rankName then
+                debugPrint("✅ Найден staff:", rankName, "(ранг", rankNumber, ")")
                 return true, rankName
             else
+                debugPrint("⚠️ Неизвестный номер ранга:", rankNumber)
+                -- Временно показываем как "Rank X" чтобы ты видел числа
                 return true, "Rank " .. rankNumber
             end
         end
@@ -50,28 +59,11 @@ local function checkStaffOffline(userId)
     return false, nil
 end
 
--- Резервный метод для онлайн игроков
-local function checkStaffOnline(player)
-    local success, rankNumber = pcall(function()
-        return player:GetRankInGroup(Config.StaffGroup.GroupID)
-    end)
-    
-    if success and rankNumber and rankNumber > 0 then
-        local rankName = STAFF_RANKS[rankNumber]
-        if rankName then
-            return true, rankName
-        else
-            return true, "Rank " .. rankNumber
-        end
-    end
-    return false, nil
-end
-
 -- Функция обновления списка
 local function updateStaffList()
     if not staffListFrame or not enabled then return end
     
-    -- Clear old entries
+    -- Очистка
     for _, v in pairs(staffListFrame:GetChildren()) do
         if v:IsA("Frame") and v.Name == "StaffEntry" then
             v:Destroy()
@@ -79,13 +71,13 @@ local function updateStaffList()
     end
     
     local yOffset = 5
-    local maxWidth = 200
+    local maxWidth = 220
     local entries = {}
     
-    -- Check online players first
+    -- Проверяем всех игроков
     for _, plr in pairs(players:GetPlayers()) do
         if plr ~= players.LocalPlayer then
-            local isStaff, rankName = checkStaffOnline(plr)
+            local isStaff, rankName = checkStaff(plr.UserId)
             if isStaff then
                 table.insert(entries, {
                     name = plr.Name,
@@ -96,24 +88,35 @@ local function updateStaffList()
         end
     end
     
-    debugPrint("Total staff found:", #entries)
-    
-    -- Sort entries
+    -- Сортировка
     table.sort(entries, function(a, b)
-        if a.rank == "Moderator" and b.rank ~= "Moderator" then return true end
-        if b.rank == "Moderator" and a.rank ~= "Moderator" then return false end
+        if a.rank == "Moderator" and not b.rank:find("Moderator") then return true end
+        if b.rank == "Moderator" and not a.rank:find("Moderator") then return false end
         return a.name < b.name
     end)
     
-    -- Create entries
+    -- Создание записей
     for _, entry in ipairs(entries) do
-        local onlineIcon = entry.isOnline and "🟢 " or ""
-        local entryText = string.format("[%s] %s%s", entry.rank, onlineIcon, entry.name)
+        local entryText = string.format("[%s] 🟢 %s", entry.rank, entry.name)
         
-        -- Create entry
+        -- Подсчёт ширины
+        local tempLabel = Instance.new("TextLabel")
+        tempLabel.Text = entryText
+        tempLabel.TextSize = 14
+        tempLabel.Font = Enum.Font.Gotham
+        tempLabel.TextTransparency = 1
+        tempLabel.Parent = staffListFrame
+        local textWidth = tempLabel.TextBounds.X + 40
+        tempLabel:Destroy()
+        
+        if textWidth > maxWidth then
+            maxWidth = textWidth
+        end
+        
+        -- Создание фрейма
         local entryFrame = Instance.new("Frame")
         entryFrame.Name = "StaffEntry"
-        entryFrame.Size = UDim2.new(1, -10, 0, 28)  -- Чуть выше
+        entryFrame.Size = UDim2.new(1, -10, 0, 28)
         entryFrame.Position = UDim2.new(0, 5, 0, yOffset)
         entryFrame.BackgroundColor3 = Config.Theme.Darker
         entryFrame.Parent = staffListFrame
@@ -122,14 +125,18 @@ local function updateStaffList()
         entryCorner.CornerRadius = UDim.new(0, 4)
         entryCorner.Parent = entryFrame
         
-        -- Rank color
+        -- Цвет по рангу
         local rankColor = Config.Theme.Cyan
         if entry.rank == "Moderator" then
-            rankColor = Color3.fromRGB(255, 255, 50)
+            rankColor = Color3.fromRGB(255, 255, 50)  -- Жёлтый
         elseif entry.rank == "Owner" then
-            rankColor = Color3.fromRGB(255, 50, 50)
+            rankColor = Color3.fromRGB(255, 50, 50)    -- Красный
         elseif entry.rank == "Developer" then
-            rankColor = Color3.fromRGB(50, 255, 50)
+            rankColor = Color3.fromRGB(50, 255, 50)    -- Зелёный
+        elseif entry.rank == "Testers" then
+            rankColor = Color3.fromRGB(50, 150, 255)   -- Синий
+        elseif entry.rank:find("Rank") then
+            rankColor = Color3.fromRGB(150, 150, 150)  -- Серый для неизвестных
         end
         
         local colorBar = Instance.new("Frame")
@@ -154,23 +161,22 @@ local function updateStaffList()
         entryLabel.TextXAlignment = Enum.TextXAlignment.Left
         entryLabel.Parent = entryFrame
         
-        yOffset = yOffset + 33  -- Больше расстояние
+        yOffset = yOffset + 33
     end
     
-    -- Adjust size - ГОРАЗДО БОЛЬШЕ!
+    -- Настройка размера
     if #entries > 0 then
-        -- Считаем нужную высоту (минимум 150, плюс на каждого)
-        local neededHeight = math.max(150, yOffset + 10)
-        staffListFrame.Parent.Size = UDim2.new(0, maxWidth, 0, neededHeight)
-        staffListFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 10)
+        local neededHeight = math.max(200, yOffset + 15)
+        staffListFrame.Parent.Size = UDim2.new(0, maxWidth + 20, 0, neededHeight)
+        staffListFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 15)
     else
-        staffListFrame.Parent.Size = UDim2.new(0, 200, 0, 60)
-        staffListFrame.CanvasSize = UDim2.new(0, 0, 0, 60)
+        staffListFrame.Parent.Size = UDim2.new(0, 220, 0, 80)
+        staffListFrame.CanvasSize = UDim2.new(0, 0, 0, 80)
         
         local noStaff = Instance.new("TextLabel")
         noStaff.Name = "StaffEntry"
         noStaff.Size = UDim2.new(1, -10, 0, 40)
-        noStaff.Position = UDim2.new(0, 5, 0, 10)
+        noStaff.Position = UDim2.new(0, 5, 0, 20)
         noStaff.BackgroundTransparency = 1
         noStaff.Text = "No staff members online"
         noStaff.TextColor3 = Config.Theme.TextSecondary
@@ -180,14 +186,14 @@ local function updateStaffList()
     end
 end
 
--- Create staff list
+-- Создание интерфейса
 function StaffList:Create(parentGui)
     screenGui = parentGui
     
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "StaffList"
-    mainFrame.Size = UDim2.new(0, 220, 0, 200)  -- Начинаем с 200 высоты!
-    mainFrame.Position = UDim2.new(0, 10, 0, 50)  -- Немного ниже
+    mainFrame.Size = UDim2.new(0, 240, 0, 250)  -- Ещё больше!
+    mainFrame.Position = UDim2.new(0, 10, 0, 50)
     mainFrame.BackgroundColor3 = Config.Theme.Background
     mainFrame.BorderSizePixel = 0
     mainFrame.Active = true
@@ -195,15 +201,15 @@ function StaffList:Create(parentGui)
     mainFrame.Parent = screenGui
     mainFrame.ZIndex = 10
     mainFrame.Visible = false
-    mainFrame.ClipsDescendants = true  -- Важно для скролла
+    mainFrame.ClipsDescendants = true
     
     local mainCorner = Instance.new("UICorner")
     mainCorner.CornerRadius = UDim.new(0, 8)
     mainCorner.Parent = mainFrame
     
-    -- Title bar
+    -- Заголовок
     local titleBar = Instance.new("Frame")
-    titleBar.Size = UDim2.new(1, 0, 0, 30)  -- Выше заголовок
+    titleBar.Size = UDim2.new(1, 0, 0, 35)
     titleBar.BackgroundColor3 = Config.Theme.Darker
     titleBar.Parent = mainFrame
     
@@ -217,17 +223,17 @@ function StaffList:Create(parentGui)
     titleText.BackgroundTransparency = 1
     titleText.Text = "Staff List"
     titleText.TextColor3 = Config.Theme.Cyan
-    titleText.TextSize = 16  -- Больше текст
+    titleText.TextSize = 18
     titleText.Font = Enum.Font.GothamBold
     titleText.TextXAlignment = Enum.TextXAlignment.Left
     titleText.Parent = titleBar
     
     local closeButton = Instance.new("TextButton")
-    closeButton.Size = UDim2.new(0, 24, 0, 24)
-    closeButton.Position = UDim2.new(1, -27, 0, 3)
+    closeButton.Size = UDim2.new(0, 26, 0, 26)
+    closeButton.Position = UDim2.new(1, -30, 0, 4.5)
     closeButton.Text = "×"
     closeButton.TextColor3 = Config.Theme.Text
-    closeButton.TextSize = 18
+    closeButton.TextSize = 20
     closeButton.BackgroundColor3 = Config.Theme.Darker
     closeButton.AutoButtonColor = false
     closeButton.Parent = titleBar
@@ -240,14 +246,14 @@ function StaffList:Create(parentGui)
         StaffList:Toggle(false)
     end)
     
-    -- Container for staff entries
+    -- Контейнер для записей
     staffListFrame = Instance.new("ScrollingFrame")
     staffListFrame.Name = "StaffContainer"
-    staffListFrame.Size = UDim2.new(1, 0, 1, -30)  -- Минус высота заголовка
-    staffListFrame.Position = UDim2.new(0, 0, 0, 30)
+    staffListFrame.Size = UDim2.new(1, 0, 1, -35)
+    staffListFrame.Position = UDim2.new(0, 0, 0, 35)
     staffListFrame.BackgroundTransparency = 1
     staffListFrame.BorderSizePixel = 0
-    staffListFrame.ScrollBarThickness = 6  -- Толще скролл
+    staffListFrame.ScrollBarThickness = 6
     staffListFrame.ScrollBarImageColor3 = Config.Theme.Cyan
     staffListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     staffListFrame.Parent = mainFrame
