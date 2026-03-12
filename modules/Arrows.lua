@@ -1,6 +1,6 @@
 -- modules/Arrows.lua
 -- Arrow module for Forsaken Hub
--- Version: 1.1 (Fixed HumanoidRootPart error)
+-- Version: 1.2 (Fully fixed camera position error)
 
 local Arrows = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
@@ -9,7 +9,6 @@ local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnao
 local players = Library.Services.Players
 local workspace = game:GetService("Workspace")
 local camera = workspace.CurrentCamera
-local userInput = game:GetService("UserInputService")
 local runService = game:GetService("RunService")
 local localPlayer = players.LocalPlayer
 
@@ -38,15 +37,14 @@ local function createArrow(targetPlayer, targetTeam)
     local arrow = Instance.new("ImageLabel")
     arrow.Name = "Arrow_" .. targetPlayer.Name
     arrow.Size = UDim2.new(0, 40, 0, 40)
-    arrow.Position = UDim2.new(0.5, -20, 0.3, -20)  -- 30% from top (slightly above center)
+    arrow.Position = UDim2.new(0.5, -20, 0.3, -20)
     arrow.BackgroundTransparency = 1
-    arrow.Image = "rbxassetid://6031280882"  -- Arrow image
+    arrow.Image = "rbxassetid://6031280882"
     arrow.ImageColor3 = targetTeam == "Killers" and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(100, 255, 100)
     arrow.Rotation = 0
     arrow.Visible = false
     arrow.Parent = arrowGui
     
-    -- Distance text
     local distanceText = Instance.new("TextLabel")
     distanceText.Name = "Distance"
     distanceText.Size = UDim2.new(1, 0, 0, 20)
@@ -108,7 +106,7 @@ local function updateArrows()
     
     for _, character in ipairs(targetFolder:GetChildren()) do
         if character:IsA("Model") and character:FindFirstChild("Humanoid") then
-            -- FIXED: Use HumanoidRootPart instead of Humanoid
+            -- FIXED: Look for HumanoidRootPart correctly
             local rootPart = character:FindFirstChild("HumanoidRootPart")
             if rootPart then
                 -- Find player name
@@ -142,9 +140,15 @@ local function updateArrows()
         end
     end
     
-    -- Create/update arrows for current targets
-    local cameraPos = camera.CameraSubject and camera.CameraSubject.Position or camera.CFrame.Position
+    -- FIXED: Get camera position safely
+    local cameraPos
+    if camera and camera.CFrame then
+        cameraPos = camera.CFrame.Position
+    else
+        return
+    end
     
+    -- Create/update arrows for current targets
     for _, target in ipairs(targets) do
         if target.rootPart then
             -- Get or create arrow
@@ -160,11 +164,13 @@ local function updateArrows()
                 -- Calculate direction
                 local targetPos = target.rootPart.Position
                 local direction = (targetPos - cameraPos).unit
+                
+                -- Check if on screen
                 local screenPos, onScreen = camera:WorldToViewportPoint(targetPos)
                 
                 -- Calculate distance
                 local distance = (targetPos - cameraPos).magnitude
-                local distanceText = math.floor(distance / 3)  -- Approximate studs to meters
+                local distanceText = math.floor(distance / 3)
                 
                 -- Update distance text
                 local text = arrow:FindFirstChild("Distance")
@@ -172,14 +178,13 @@ local function updateArrows()
                     text.Text = distanceText .. "m"
                 end
                 
-                -- If on screen, hide arrow (player is visible)
+                -- If on screen, hide arrow
                 if onScreen and screenPos.Z > 0 then
                     arrow.Visible = false
                 else
-                    -- Show arrow
                     arrow.Visible = true
                     
-                    -- Calculate angle to target
+                    -- Calculate angle for arrow rotation
                     local cameraDirection = camera.CFrame.LookVector
                     local toTarget = (targetPos - cameraPos).unit
                     
@@ -193,7 +198,7 @@ local function updateArrows()
                     
                     -- Position arrow in a circle around center
                     local centerX = arrowGui.AbsoluteSize.X / 2
-                    local centerY = arrowGui.AbsoluteSize.Y * 0.3  -- 30% from top
+                    local centerY = arrowGui.AbsoluteSize.Y * 0.3
                     
                     local radius = 120
                     local angleRad = math.rad(angle)
@@ -224,7 +229,7 @@ function Arrows:Toggle(state)
         -- Initial update
         updateArrows()
         
-        -- Update loop (every frame for smooth rotation)
+        -- Update loop
         local conn = runService.RenderStepped:Connect(function()
             if enabled then
                 updateArrows()
@@ -246,13 +251,11 @@ function Arrows:Toggle(state)
         end
         table.clear(arrowConnections)
         
-        -- Remove all arrows
         for _, arrow in pairs(arrows) do
             pcall(function() arrow:Destroy() end)
         end
         table.clear(arrows)
         
-        -- Remove GUI
         if arrowGui then
             pcall(function() arrowGui:Destroy() end)
             arrowGui = nil
