@@ -1,18 +1,19 @@
 -- modules/ESP.lua
 -- ESP module for Forsaken Hub
--- Version: 1.0
+-- Version: 1.1 (Fixed nil error)
 
 local ESP = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
 local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua"))()
 
 local players = Library.Services.Players
-local runService = Library.Services.RunService
+local runService = game:GetService("RunService")  -- Fixed: Get service directly
 local workspace = game:GetService("Workspace")
 
 local enabled = false
 local espConnections = {}
 local espObjects = {}
+local updateLoop = nil
 
 -- Create ESP highlight for a character
 local function createESP(character, playerName, team)
@@ -46,6 +47,7 @@ local function createESP(character, playerName, team)
     billboard.Size = UDim2.new(0, 200, 0, 50)
     billboard.StudsOffset = Vector3.new(0, 3, 0)
     billboard.AlwaysOnTop = true
+    billboard.ResetOnSpawn = false  -- Prevent cleanup
     
     local nameFrame = Instance.new("Frame")
     nameFrame.Size = UDim2.new(1, 0, 1, 0)
@@ -87,12 +89,12 @@ local function updateESP()
     -- Clear old ESP
     for obj in pairs(espObjects) do
         if obj and obj.Parent then
-            obj:Destroy()
+            pcall(function() obj:Destroy() end)
         end
     end
     table.clear(espObjects)
     
-    -- Check Players folder in Workspace
+    -- Check if workspace and Players folder exist
     local playersFolder = workspace:FindFirstChild("Players")
     if not playersFolder then return end
     
@@ -148,46 +150,56 @@ function ESP:Toggle(state)
         -- Initial update
         updateESP()
         
-        -- Connect to game events
-        local conn = runService.Heartbeat:Connect(function()
-            if enabled then
+        -- Use a loop instead of Heartbeat to avoid nil issues
+        spawn(function()
+            while enabled do
+                updateESP()
+                task.wait(1)  -- Update every second instead of every frame
+            end
+        end)
+        
+        -- Listen for character additions (with error handling)
+        local playersFolder = workspace:FindFirstChild("Players")
+        if playersFolder then
+            local killersFolder = playersFolder:FindFirstChild("Killers")
+            if killersFolder then
+                local conn = killersFolder.ChildAdded:Connect(function()
+                    task.wait(0.1)
+                    updateESP()
+                end)
+                table.insert(espConnections, conn)
+            end
+            
+            local survivorsFolder = playersFolder:FindFirstChild("Survivors")
+            if survivorsFolder then
+                local conn = survivorsFolder.ChildAdded:Connect(function()
+                    task.wait(0.1)
+                    updateESP()
+                end)
+                table.insert(espConnections, conn)
+            end
+        end
+        
+        -- Also listen for when Players folder changes (new round)
+        local conn = workspace.ChildAdded:Connect(function(child)
+            if child.Name == "Players" then
+                task.wait(0.5)
                 updateESP()
             end
         end)
         table.insert(espConnections, conn)
         
-        -- Listen for character additions
-        local playersFolder = workspace:FindFirstChild("Players")
-        if playersFolder then
-            local killersFolder = playersFolder:FindFirstChild("Killers")
-            if killersFolder then
-                local conn2 = killersFolder.ChildAdded:Connect(function()
-                    task.wait(0.1)
-                    updateESP()
-                end)
-                table.insert(espConnections, conn2)
-            end
-            
-            local survivorsFolder = playersFolder:FindFirstChild("Survivors")
-            if survivorsFolder then
-                local conn3 = survivorsFolder.ChildAdded:Connect(function()
-                    task.wait(0.1)
-                    updateESP()
-                end)
-                table.insert(espConnections, conn3)
-            end
-        end
-        
     else
-        -- Clean up
+        -- Clean up connections
         for _, conn in ipairs(espConnections) do
-            conn:Disconnect()
+            pcall(function() conn:Disconnect() end)
         end
         table.clear(espConnections)
         
+        -- Clean up ESP objects
         for obj in pairs(espObjects) do
             if obj and obj.Parent then
-                obj:Destroy()
+                pcall(function() obj:Destroy() end)
             end
         end
         table.clear(espObjects)
