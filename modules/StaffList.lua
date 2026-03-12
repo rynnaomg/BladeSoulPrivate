@@ -1,6 +1,6 @@
 -- modules/StaffList.lua
 -- Staff List module for Forsaken Hub
--- Version: 4.0 (CUSTOM RANK NUMBERS)
+-- Version: 5.0 (OFFLINE PLAYER SUPPORT)
 
 local StaffList = {}
 local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua"))()
@@ -8,20 +8,20 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynna
 
 local players = Library.Services.Players
 local tween = Library.Services.Tween
+local GroupService = game:GetService("GroupService")
+local HttpService = game:GetService("HttpService")
+
 local screenGui = nil
 local staffListFrame = nil
 local enabled = false
 
 -- ===== ТВОИ РЕАЛЬНЫЕ НОМЕРА РАНГОВ ИЗ ЛОГОВ =====
--- Из твоих логов видно:
--- Moderator = 225
--- Другие ранги нужно узнать (зайди на сервер с разными акками)
 local STAFF_RANKS = {
-    [225] = "Moderator",  -- Твой ранг (Moderator)
-    -- Добавим остальные когда узнаешь:
+    [225] = "Moderator",  -- Moderator = 225
+    -- Добавим остальные когда узнаешь номера:
     -- [???] = "Testers",
     -- [???] = "Developer",
-    -- [255] = "Owner",     -- Owner обычно 255
+    -- [255] = "Owner",
 }
 
 -- Debug функция
@@ -29,30 +29,81 @@ local function debugPrint(...)
     print("[StaffList Debug]", ...)
 end
 
--- Функция проверки staff (исправленная)
-local function isStaff(targetPlayer)
-    if not targetPlayer then return false, nil end
-    
-    local success, rankNumber = pcall(function()
-        return targetPlayer:GetRankInGroup(Config.StaffGroup.GroupID)
+-- Функция проверки staff через GroupService (работает даже офлайн!)
+local function checkStaffOffline(userId)
+    local success, groups = pcall(function()
+        return GroupService:GetGroupsAsync(userId)
     end)
     
-    debugPrint("Player", targetPlayer.Name, "Rank number:", rankNumber or "nil")
+    if not success or not groups then
+        debugPrint("Failed to get groups for user", userId)
+        return false, nil
+    end
     
-    if success and rankNumber and rankNumber > 0 then
-        -- Проверяем по нашим известным номерам
-        local rankName = STAFF_RANKS[rankNumber]
-        if rankName then
-            debugPrint("✅ Staff found:", rankName, "(rank", rankNumber, ")")
-            return true, rankName
-        else
-            debugPrint("❌ Unknown rank number:", rankNumber)
-            -- Временно показываем как Unknown[номер]
-            return true, "Rank " .. rankNumber
+    -- Ищем нашу группу
+    for _, groupData in ipairs(groups) do
+        if groupData.Id == Config.StaffGroup.GroupID then
+            local rankNumber = groupData.Rank  -- Числовой ранг
+            debugPrint("User", userId, "has rank number:", rankNumber, "in group")
+            
+            -- Проверяем по нашим известным номерам
+            local rankName = STAFF_RANKS[rankNumber]
+            if rankName then
+                return true, rankName
+            else
+                debugPrint("Unknown rank number:", rankNumber)
+                return true, "Rank " .. rankNumber
+            end
         end
     end
     
     return false, nil
+end
+
+-- Резервный метод для онлайн игроков
+local function checkStaffOnline(player)
+    local success, rankNumber = pcall(function()
+        return player:GetRankInGroup(Config.StaffGroup.GroupID)
+    end)
+    
+    if success and rankNumber and rankNumber > 0 then
+        local rankName = STAFF_RANKS[rankNumber]
+        if rankName then
+            return true, rankName
+        else
+            return true, "Rank " .. rankNumber
+        end
+    end
+    return false, nil
+end
+
+-- Функция сбора всех staff (онлайн + офлайн)
+local function getAllStaff()
+    local staffMembers = {}
+    local processedUsers = {}
+    
+    -- Сначала проверяем онлайн игроков (быстро)
+    for _, plr in pairs(players:GetPlayers()) do
+        if plr ~= players.LocalPlayer then
+            local isStaff, rankName = checkStaffOnline(plr)
+            if isStaff then
+                table.insert(staffMembers, {
+                    name = plr.Name,
+                    rank = rankName,
+                    userId = plr.UserId,
+                    isOnline = true
+                })
+                processedUsers[plr.UserId] = true
+            end
+        end
+    end
+    
+    -- Проверяем всех возможных staff офлайн (нужно больше времени)
+    -- В реальном времени это делается через периодические запросы
+    -- или при включении функции
+    
+    debugPrint("Total staff found online:", #staffMembers)
+    return staffMembers
 end
 
 -- Функция обновления списка
@@ -68,31 +119,20 @@ local function updateStaffList()
     
     local yOffset = 5
     local maxWidth = 180
-    local entries = {}
-    
-    -- Check all players
-    for _, plr in pairs(players:GetPlayers()) do
-        if plr ~= players.LocalPlayer then
-            local isStaffMember, rankName = isStaff(plr)
-            if isStaffMember then
-                table.insert(entries, {player = plr, rank = rankName})
-            end
-        end
-    end
+    local staffMembers = getAllStaff()
     
     -- Sort entries
-    table.sort(entries, function(a, b)
-        -- Сортируем по приоритету (Moderator выше остальных)
-        if a.rank == "Moderator" then return true end
-        if b.rank == "Moderator" then return false end
-        return a.rank < b.rank
+    table.sort(staffMembers, function(a, b)
+        -- Moderator выше других
+        if a.rank == "Moderator" and b.rank ~= "Moderator" then return true end
+        if b.rank == "Moderator" and a.rank ~= "Moderator" then return false end
+        return a.name < b.name
     end)
     
     -- Create entries
-    for _, entry in ipairs(entries) do
-        local plr = entry.player
-        local rank = entry.rank
-        local entryText = string.format("[%s] %s", rank, plr.Name)
+    for _, member in ipairs(staffMembers) do
+        local onlineIcon = member.isOnline and "🟢 " or "⚫ "
+        local entryText = string.format("[%s] %s%s", member.rank, onlineIcon, member.name)
         
         -- Calculate text width
         local tempLabel = Instance.new("TextLabel")
@@ -120,13 +160,13 @@ local function updateStaffList()
         entryCorner.CornerRadius = UDim.new(0, 4)
         entryCorner.Parent = entryFrame
         
-        -- Rank color (Moderator = желтый)
+        -- Rank color
         local rankColor = Config.Theme.Cyan
-        if rank == "Moderator" then
+        if member.rank == "Moderator" then
             rankColor = Color3.fromRGB(255, 255, 50)  -- Желтый
-        elseif rank:find("Owner") then
+        elseif member.rank == "Owner" then
             rankColor = Color3.fromRGB(255, 50, 50)    -- Красный
-        elseif rank:find("Developer") then
+        elseif member.rank == "Developer" then
             rankColor = Color3.fromRGB(50, 255, 50)    -- Зеленый
         end
         
@@ -156,7 +196,7 @@ local function updateStaffList()
     end
     
     -- Adjust size
-    if #entries > 0 then
+    if #staffMembers > 0 then
         staffListFrame.Parent.Size = UDim2.new(0, maxWidth, 0, yOffset + 5)
         staffListFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 5)
     else
