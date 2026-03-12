@@ -1,16 +1,15 @@
 -- GUI.lua
 -- Main GUI interface for Forsaken Hub
--- Version: 1.1 (with modules system)
+-- Version: 2.0 (New modern design)
 
 local GUI = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
 local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua"))()
 local StaffList = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/modules/StaffList.lua"))()
+local ESP = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/modules/ESP.lua"))()
 
 local player = Library.Services.Players.LocalPlayer
 local tween = Library.Services.Tween
-local userInput = Library.Services.UserInput
-local players = Library.Services.Players
 
 -- Variables for minimize system
 local mainWindow = nil
@@ -18,9 +17,141 @@ local minimizedButton = nil
 local screenGui = nil
 local isMinimized = false
 
--- Staff List variables
-local staffListModule = nil
-local staffListEnabled = false
+-- Function to create a modern section container
+local function createModernSection(parent, title, position)
+    -- Main container with darker background
+    local container = Instance.new("Frame")
+    container.Name = title .. "Section"
+    container.Size = UDim2.new(0, 230, 0, 80)
+    container.Position = position
+    container.BackgroundColor3 = Color3.fromRGB(25, 25, 25)  -- Even darker than main
+    container.BorderSizePixel = 0
+    container.Parent = parent
+    
+    local containerCorner = Instance.new("UICorner")
+    containerCorner.CornerRadius = UDim.new(0, 8)
+    containerCorner.Parent = container
+    
+    -- Inner glow (cyan border)
+    local innerGlow = Instance.new("Frame")
+    innerGlow.Size = UDim2.new(1, -2, 1, -2)
+    innerGlow.Position = UDim2.new(0, 1, 0, 1)
+    innerGlow.BackgroundTransparency = 1
+    innerGlow.BorderSizePixel = 0
+    innerGlow.Parent = container
+    
+    local glowCorner = Instance.new("UICorner")
+    glowCorner.CornerRadius = UDim.new(0, 7)
+    glowCorner.Parent = innerGlow
+    
+    -- Title with cyan accent
+    local titleFrame = Instance.new("Frame")
+    titleFrame.Size = UDim2.new(1, -20, 0, 25)
+    titleFrame.Position = UDim2.new(0, 10, 0, 5)
+    titleFrame.BackgroundTransparency = 1
+    titleFrame.Parent = container
+    
+    local titleDot = Instance.new("Frame")
+    titleDot.Size = UDim2.new(0, 4, 0, 4)
+    titleDot.Position = UDim2.new(0, 0, 0.5, -2)
+    titleDot.BackgroundColor3 = Config.Theme.Cyan
+    titleDot.BorderSizePixel = 0
+    titleDot.Parent = titleFrame
+    
+    local dotCorner = Instance.new("UICorner")
+    dotCorner.CornerRadius = UDim.new(1, 0)
+    dotCorner.Parent = titleDot
+    
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(1, -15, 1, 0)
+    titleLabel.Position = UDim2.new(0, 15, 0, 0)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = title
+    titleLabel.TextColor3 = Config.Theme.Cyan
+    titleLabel.TextSize = 14
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.Parent = titleFrame
+    
+    -- Separator line
+    local separator = Instance.new("Frame")
+    separator.Size = UDim2.new(1, -20, 0, 1)
+    separator.Position = UDim2.new(0, 10, 0, 32)
+    separator.BackgroundColor3 = Config.Theme.Cyan
+    separator.BackgroundTransparency = 0.7
+    separator.BorderSizePixel = 0
+    separator.Parent = container
+    
+    return container
+end
+
+-- Create modern toggle
+local function createModernToggle(container, text, posY, default, callback)
+    local toggleContainer = Instance.new("Frame")
+    toggleContainer.Size = UDim2.new(1, -20, 0, 30)
+    toggleContainer.Position = UDim2.new(0, 10, 0, posY)
+    toggleContainer.BackgroundTransparency = 1
+    toggleContainer.Parent = container
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0, 150, 1, 0)
+    label.Position = UDim2.new(0, 0, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Config.Theme.Text
+    label.TextSize = 13
+    label.Font = Enum.Font.Gotham
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = toggleContainer
+    
+    -- Modern toggle switch
+    local toggleBg = Instance.new("Frame")
+    toggleBg.Size = UDim2.new(0, 44, 0, 20)
+    toggleBg.Position = UDim2.new(1, -54, 0.5, -10)
+    toggleBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    toggleBg.Parent = toggleContainer
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(1, 0)
+    toggleCorner.Parent = toggleBg
+    
+    -- Glow effect
+    local toggleGlow = Instance.new("ImageLabel")
+    toggleGlow.Size = UDim2.new(1, 10, 1, 10)
+    toggleGlow.Position = UDim2.new(0.5, -5, 0.5, -5)
+    toggleGlow.BackgroundTransparency = 1
+    toggleGlow.Image = "rbxassetid://3570695787"
+    toggleGlow.ImageColor3 = Config.Theme.Cyan
+    toggleGlow.ImageTransparency = 0.8
+    toggleGlow.Parent = toggleBg
+    
+    local toggleCircle = Instance.new("Frame")
+    toggleCircle.Size = UDim2.new(0, 16, 0, 16)
+    toggleCircle.Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    toggleCircle.BackgroundColor3 = default and Config.Theme.Cyan or Color3.fromRGB(150, 150, 150)
+    toggleCircle.Parent = toggleBg
+    
+    local circleCorner = Instance.new("UICorner")
+    circleCorner.CornerRadius = UDim.new(1, 0)
+    circleCorner.Parent = toggleCircle
+    
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, 0, 1, 0)
+    button.BackgroundTransparency = 1
+    button.Text = ""
+    button.Parent = toggleContainer
+    
+    local toggled = default
+    
+    button.MouseButton1Click:Connect(function()
+        toggled = not toggled
+        local goalPos = toggled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+        local goalColor = toggled and Config.Theme.Cyan or Color3.fromRGB(150, 150, 150)
+        
+        tween:Create(toggleCircle, TweenInfo.new(0.2), {Position = goalPos, BackgroundColor3 = goalColor}):Play()
+        callback(toggled)
+    end)
+end
 
 function GUI:Create()
     if not player then return end
@@ -32,8 +163,9 @@ function GUI:Create()
     screenGui.ResetOnSpawn = false
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     
-    -- Create Staff List module instance
-    staffListModule = StaffList:Create(screenGui)
+    -- Create modules
+    local staffListModule = StaffList:Create(screenGui)
+    -- ESP module will be created when toggled
     
     -- ===== MINIMIZED BUTTON =====
     minimizedButton = Instance.new("ImageButton")
@@ -50,12 +182,10 @@ function GUI:Create()
     minimizedButton.Active = true
     minimizedButton.Draggable = true
     
-    -- Button corner
     local buttonCorner = Instance.new("UICorner")
     buttonCorner.CornerRadius = UDim.new(1, 0)
     buttonCorner.Parent = minimizedButton
     
-    -- Button text
     local buttonText = Instance.new("TextLabel")
     buttonText.Size = UDim2.new(1, 0, 1, 0)
     buttonText.BackgroundTransparency = 1
@@ -65,7 +195,6 @@ function GUI:Create()
     buttonText.Font = Enum.Font.GothamBold
     buttonText.Parent = minimizedButton
     
-    -- Button click to restore
     minimizedButton.MouseButton1Click:Connect(function()
         isMinimized = false
         minimizedButton.Visible = false
@@ -75,50 +204,68 @@ function GUI:Create()
     -- ===== MAIN WINDOW =====
     mainWindow = Instance.new("Frame")
     mainWindow.Name = "MainWindow"
-    mainWindow.Size = UDim2.new(0, 500, 0, 400)
-    mainWindow.Position = UDim2.new(0.5, -250, 0.5, -200)
+    mainWindow.Size = UDim2.new(0, 550, 0, 450)
+    mainWindow.Position = UDim2.new(0.5, -275, 0.5, -225)
     mainWindow.BackgroundColor3 = Config.Theme.Background
     mainWindow.BorderSizePixel = 0
     mainWindow.Active = true
     mainWindow.Draggable = true
     mainWindow.Parent = screenGui
     
-    -- Rounded corners
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 10)
+    corner.CornerRadius = UDim.new(0, 12)
     corner.Parent = mainWindow
     
-    -- Cyan border accent
-    local borderAccent = Instance.new("Frame")
-    borderAccent.Name = "BorderAccent"
-    borderAccent.Size = UDim2.new(1, 0, 0, 2)
-    borderAccent.Position = UDim2.new(0, 0, 0, 0)
-    borderAccent.BackgroundColor3 = Config.Theme.Cyan
-    borderAccent.BorderSizePixel = 0
-    borderAccent.Parent = mainWindow
+    -- Cyan glow effect
+    local glow = Instance.new("ImageLabel")
+    glow.Size = UDim2.new(1, 20, 1, 20)
+    glow.Position = UDim2.new(0.5, -10, 0.5, -10)
+    glow.BackgroundTransparency = 1
+    glow.Image = "rbxassetid://3570695787"
+    glow.ImageColor3 = Config.Theme.Cyan
+    glow.ImageTransparency = 0.8
+    glow.Parent = mainWindow
     
     -- Title bar
     local titleBar = Instance.new("Frame")
     titleBar.Name = "TitleBar"
-    titleBar.Size = UDim2.new(1, 0, 0, 40)
+    titleBar.Size = UDim2.new(1, 0, 0, 45)
     titleBar.BackgroundColor3 = Config.Theme.Darker
     titleBar.BorderSizePixel = 0
     titleBar.Parent = mainWindow
     
-    -- Title bar corner
     local titleCorner = Instance.new("UICorner")
-    titleCorner.CornerRadius = UDim.new(0, 10)
+    titleCorner.CornerRadius = UDim.new(0, 12)
     titleCorner.Parent = titleBar
     
-    -- Title text
+    -- Gradient effect
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Config.Theme.Darker),
+        ColorSequenceKeypoint.new(1, Config.Theme.Background)
+    })
+    gradient.Rotation = 90
+    gradient.Parent = titleBar
+    
+    -- Title with icon
+    local titleIcon = Instance.new("Frame")
+    titleIcon.Size = UDim2.new(0, 8, 0, 8)
+    titleIcon.Position = UDim2.new(0, 15, 0.5, -4)
+    titleIcon.BackgroundColor3 = Config.Theme.Cyan
+    titleIcon.BorderSizePixel = 0
+    titleIcon.Parent = titleBar
+    
+    local iconCorner = Instance.new("UICorner")
+    iconCorner.CornerRadius = UDim.new(1, 0)
+    iconCorner.Parent = titleIcon
+    
     local titleText = Instance.new("TextLabel")
-    titleText.Name = "TitleText"
-    titleText.Size = UDim2.new(1, -90, 1, 0)
-    titleText.Position = UDim2.new(0, 15, 0, 0)
+    titleText.Size = UDim2.new(1, -100, 1, 0)
+    titleText.Position = UDim2.new(0, 30, 0, 0)
     titleText.BackgroundTransparency = 1
     titleText.Text = Config.GUI.Title .. " v" .. Config.GUI.Version
-    titleText.TextColor3 = Config.Theme.Cyan
-    titleText.TextSize = 18
+    titleText.TextColor3 = Config.Theme.Text
+    titleText.TextSize = 20
     titleText.Font = Enum.Font.GothamBold
     titleText.TextXAlignment = Enum.TextXAlignment.Left
     titleText.Parent = titleBar
@@ -126,8 +273,8 @@ function GUI:Create()
     -- Minimize button
     local minimizeButton = Instance.new("TextButton")
     minimizeButton.Name = "MinimizeButton"
-    minimizeButton.Size = UDim2.new(0, 30, 0, 30)
-    minimizeButton.Position = UDim2.new(1, -70, 0, 5)
+    minimizeButton.Size = UDim2.new(0, 32, 0, 32)
+    minimizeButton.Position = UDim2.new(1, -74, 0.5, -16)
     minimizeButton.Text = "–"
     minimizeButton.TextColor3 = Config.Theme.Text
     minimizeButton.TextSize = 24
@@ -156,8 +303,8 @@ function GUI:Create()
     -- Close button
     local closeButton = Instance.new("TextButton")
     closeButton.Name = "CloseButton"
-    closeButton.Size = UDim2.new(0, 30, 0, 30)
-    closeButton.Position = UDim2.new(1, -35, 0, 5)
+    closeButton.Size = UDim2.new(0, 32, 0, 32)
+    closeButton.Position = UDim2.new(1, -37, 0.5, -16)
     closeButton.Text = "×"
     closeButton.TextColor3 = Config.Theme.Text
     closeButton.TextSize = 24
@@ -184,34 +331,40 @@ function GUI:Create()
     -- Tab container
     local tabContainer = Instance.new("Frame")
     tabContainer.Name = "TabContainer"
-    tabContainer.Size = UDim2.new(1, -20, 0, 40)
-    tabContainer.Position = UDim2.new(0, 10, 0, 50)
+    tabContainer.Size = UDim2.new(1, -30, 0, 45)
+    tabContainer.Position = UDim2.new(0, 15, 0, 55)
     tabContainer.BackgroundTransparency = 1
     tabContainer.Parent = mainWindow
     
-    -- Tab buttons
-    local tabs = {"Main", "Combat", "Visuals", "Misc", "Settings"}
+    -- Modern tab buttons
+    local tabs = {"MAIN", "VISUALS", "MISC", "SETTINGS"}
     local tabButtons = {}
+    local tabWidth = 100
     
     for i, tabName in ipairs(tabs) do
         local tabButton = Instance.new("TextButton")
         tabButton.Name = tabName .. "Tab"
-        tabButton.Size = UDim2.new(0, 90, 0, 35)
-        tabButton.Position = UDim2.new(0, (i-1) * 95, 0, 0)
+        tabButton.Size = UDim2.new(0, tabWidth, 0, 35)
+        tabButton.Position = UDim2.new(0, (i-1) * (tabWidth + 5), 0, 5)
         tabButton.Text = tabName
-        tabButton.TextColor3 = Config.Theme.TextSecondary
+        tabButton.TextColor3 = i == 1 and Config.Theme.Cyan or Config.Theme.TextSecondary
         tabButton.TextSize = 14
-        tabButton.Font = Enum.Font.Gotham
+        tabButton.Font = Enum.Font.GothamBold
         tabButton.BackgroundTransparency = 1
         tabButton.Parent = tabContainer
         
         local underline = Instance.new("Frame")
         underline.Name = "Underline"
-        underline.Size = UDim2.new(1, 0, 0, 2)
-        underline.Position = UDim2.new(0, 0, 1, -2)
+        underline.Size = UDim2.new(0, 60, 0, 2)
+        underline.Position = UDim2.new(0.5, -30, 1, -2)
         underline.BackgroundColor3 = Config.Theme.Cyan
-        underline.BackgroundTransparency = 1
+        underline.BackgroundTransparency = i == 1 and 0 or 1
+        underline.BorderSizePixel = 0
         underline.Parent = tabButton
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 2)
+        corner.Parent = underline
         
         tabButtons[tabName] = {button = tabButton, underline = underline}
     end
@@ -219,8 +372,8 @@ function GUI:Create()
     -- Content container
     local contentContainer = Instance.new("Frame")
     contentContainer.Name = "ContentContainer"
-    contentContainer.Size = UDim2.new(1, -20, 1, -100)
-    contentContainer.Position = UDim2.new(0, 10, 0, 100)
+    contentContainer.Size = UDim2.new(1, -30, 1, -120)
+    contentContainer.Position = UDim2.new(0, 15, 0, 105)
     contentContainer.BackgroundTransparency = 1
     contentContainer.Parent = mainWindow
     
@@ -231,13 +384,6 @@ function GUI:Create()
     mainContent.BackgroundTransparency = 1
     mainContent.Parent = contentContainer
     mainContent.Visible = true
-    
-    local combatContent = Instance.new("Frame")
-    combatContent.Name = "CombatContent"
-    combatContent.Size = UDim2.new(1, 0, 1, 0)
-    combatContent.BackgroundTransparency = 1
-    combatContent.Parent = contentContainer
-    combatContent.Visible = false
     
     local visualsContent = Instance.new("Frame")
     visualsContent.Name = "VisualsContent"
@@ -260,61 +406,49 @@ function GUI:Create()
     settingsContent.Parent = contentContainer
     settingsContent.Visible = false
     
-    -- ===== MISC TAB CONTENT =====
-    local miscLabel = Instance.new("TextLabel")
-    miscLabel.Size = UDim2.new(1, 0, 0, 30)
-    miscLabel.Position = UDim2.new(0, 10, 0, 10)
-    miscLabel.BackgroundTransparency = 1
-    miscLabel.Text = "Miscellaneous Features"
-    miscLabel.TextColor3 = Config.Theme.Cyan
-    miscLabel.TextSize = 16
-    miscLabel.Font = Enum.Font.GothamBold
-    miscLabel.TextXAlignment = Enum.TextXAlignment.Left
-    miscLabel.Parent = miscContent
+    -- ===== MAIN TAB =====
+    local mainWelcome = Instance.new("TextLabel")
+    mainWelcome.Size = UDim2.new(1, 0, 0, 40)
+    mainWelcome.Position = UDim2.new(0, 10, 0, 10)
+    mainWelcome.BackgroundTransparency = 1
+    mainWelcome.Text = "Welcome back, " .. player.Name
+    mainWelcome.TextColor3 = Config.Theme.Text
+    mainWelcome.TextSize = 22
+    mainWelcome.Font = Enum.Font.GothamBold
+    mainWelcome.TextXAlignment = Enum.TextXAlignment.Left
+    mainWelcome.Parent = mainContent
     
-    -- Staff List Toggle
-    Library:CreateToggle("Staff List", UDim2.new(1, -20, 0, 30), UDim2.new(0, 10, 0, 50), miscContent, false, function(state)
-        staffListEnabled = state
-        StaffList:Toggle(state)
+    local mainStatus = Instance.new("TextLabel")
+    mainStatus.Size = UDim2.new(1, 0, 0, 25)
+    mainStatus.Position = UDim2.new(0, 10, 0, 50)
+    mainStatus.BackgroundTransparency = 1
+    mainStatus.Text = "● Status: Connected"
+    mainStatus.TextColor3 = Config.Theme.Cyan
+    mainStatus.TextSize = 14
+    mainStatus.Font = Enum.Font.Gotham
+    mainStatus.TextXAlignment = Enum.TextXAlignment.Left
+    mainStatus.Parent = mainContent
+    
+    -- ===== VISUALS TAB (with ESP) =====
+    local espSection = createModernSection(visualsContent, "PLAYER ESP", UDim2.new(0, 0, 0, 0))
+    
+    createModernToggle(espSection, "Enable ESP", 40, false, function(state)
+        ESP:Toggle(state)
     end)
     
-    -- ===== MAIN TAB CONTENT =====
-    local welcomeText = Instance.new("TextLabel")
-    welcomeText.Name = "WelcomeText"
-    welcomeText.Size = UDim2.new(1, 0, 0, 50)
-    welcomeText.Position = UDim2.new(0, 10, 0, 20)
-    welcomeText.BackgroundTransparency = 1
-    welcomeText.Text = "Welcome, " .. player.Name .. "!"
-    welcomeText.TextColor3 = Config.Theme.Text
-    welcomeText.TextSize = 24
-    welcomeText.Font = Enum.Font.GothamBold
-    welcomeText.TextXAlignment = Enum.TextXAlignment.Left
-    welcomeText.Parent = mainContent
+    -- ===== MISC TAB (with Staff List) =====
+    local miscSection = createModernSection(miscContent, "MISC FEATURES", UDim2.new(0, 0, 0, 0))
     
-    local statusText = Instance.new("TextLabel")
-    statusText.Name = "StatusText"
-    statusText.Size = UDim2.new(1, 0, 0, 30)
-    statusText.Position = UDim2.new(0, 10, 0, 70)
-    statusText.BackgroundTransparency = 1
-    statusText.Text = "Status: Connected"
-    statusText.TextColor3 = Config.Theme.Cyan
-    statusText.TextSize = 16
-    statusText.Font = Enum.Font.Gotham
-    statusText.TextXAlignment = Enum.TextXAlignment.Left
-    statusText.Parent = mainContent
-    
-    -- Test button
-    Library:CreateButton("Test Button", UDim2.new(0, 150, 0, 35), UDim2.new(0, 10, 0, 120), Config.Theme.Darker, mainContent, function()
-        Library:Notify("Button clicked!", 2)
+    createModernToggle(miscSection, "Staff List", 40, false, function(state)
+        StaffList:Toggle(state)
     end)
     
     -- Tab switching function
     local function switchTab(tabName)
-        mainContent.Visible = (tabName == "Main")
-        combatContent.Visible = (tabName == "Combat")
-        visualsContent.Visible = (tabName == "Visuals")
-        miscContent.Visible = (tabName == "Misc")
-        settingsContent.Visible = (tabName == "Settings")
+        mainContent.Visible = (tabName == "MAIN")
+        visualsContent.Visible = (tabName == "VISUALS")
+        miscContent.Visible = (tabName == "MISC")
+        settingsContent.Visible = (tabName == "SETTINGS")
         
         for name, data in pairs(tabButtons) do
             if name == tabName then
@@ -328,19 +462,18 @@ function GUI:Create()
     end
     
     -- Connect tab buttons
-    tabButtons["Main"].button.MouseButton1Click:Connect(function() switchTab("Main") end)
-    tabButtons["Combat"].button.MouseButton1Click:Connect(function() switchTab("Combat") end)
-    tabButtons["Visuals"].button.MouseButton1Click:Connect(function() switchTab("Visuals") end)
-    tabButtons["Misc"].button.MouseButton1Click:Connect(function() switchTab("Misc") end)
-    tabButtons["Settings"].button.MouseButton1Click:Connect(function() switchTab("Settings") end)
+    tabButtons["MAIN"].button.MouseButton1Click:Connect(function() switchTab("MAIN") end)
+    tabButtons["VISUALS"].button.MouseButton1Click:Connect(function() switchTab("VISUALS") end)
+    tabButtons["MISC"].button.MouseButton1Click:Connect(function() switchTab("MISC") end)
+    tabButtons["SETTINGS"].button.MouseButton1Click:Connect(function() switchTab("SETTINGS") end)
     
     -- Animation on spawn
     mainWindow.Size = UDim2.new(0, 0, 0, 0)
     mainWindow.Position = UDim2.new(0.5, 0, 0.5, 0)
     
     tween:Create(mainWindow, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.new(0, 500, 0, 400),
-        Position = UDim2.new(0.5, -250, 0.5, -200)
+        Size = UDim2.new(0, 550, 0, 450),
+        Position = UDim2.new(0.5, -275, 0.5, -225)
     }):Play()
 end
 
