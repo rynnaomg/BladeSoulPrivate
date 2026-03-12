@@ -1,6 +1,6 @@
 -- modules/Arrows.lua
 -- Arrow module for Forsaken Hub
--- Version: 1.0 (Radar arrows around center screen)
+-- Version: 1.1 (Fixed HumanoidRootPart error)
 
 local Arrows = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
@@ -107,16 +107,20 @@ local function updateArrows()
     if not targetFolder then return end
     
     for _, character in ipairs(targetFolder:GetChildren()) do
-        if character:IsA("Model") and character:FindFirstChild("Humanoid") and character:FindFirstChild("HumanoidRootPart") then
-            -- Find player name
-            for _, plr in pairs(players:GetPlayers()) do
-                if plr.Character == character and plr ~= localPlayer then
-                    table.insert(targets, {
-                        player = plr,
-                        character = character,
-                        rootPart = character.HumanoidRootPart
-                    })
-                    break
+        if character:IsA("Model") and character:FindFirstChild("Humanoid") then
+            -- FIXED: Use HumanoidRootPart instead of Humanoid
+            local rootPart = character:FindFirstChild("HumanoidRootPart")
+            if rootPart then
+                -- Find player name
+                for _, plr in pairs(players:GetPlayers()) do
+                    if plr.Character == character and plr ~= localPlayer then
+                        table.insert(targets, {
+                            player = plr,
+                            character = character,
+                            rootPart = rootPart
+                        })
+                        break
+                    end
                 end
             end
         end
@@ -172,23 +176,34 @@ local function updateArrows()
                 if onScreen and screenPos.Z > 0 then
                     arrow.Visible = false
                 else
-                    -- Show arrow and rotate to point to target
+                    -- Show arrow
                     arrow.Visible = true
                     
-                    -- Calculate angle
-                    local angle = math.atan2(direction.Y, math.sqrt(direction.X^2 + direction.Z^2))
-                    angle = math.deg(angle)
+                    -- Calculate angle to target
+                    local cameraDirection = camera.CFrame.LookVector
+                    local toTarget = (targetPos - cameraPos).unit
                     
-                    -- Arrow rotates around center (200px radius)
+                    -- Get angle in 2D (XZ plane)
+                    local cameraAngle = math.atan2(-cameraDirection.X, -cameraDirection.Z)
+                    local targetAngle = math.atan2(-toTarget.X, -toTarget.Z)
+                    
+                    local angle = (targetAngle - cameraAngle) * (180 / math.pi)
+                    if angle > 180 then angle = angle - 360 end
+                    if angle < -180 then angle = angle + 360 end
+                    
+                    -- Position arrow in a circle around center
                     local centerX = arrowGui.AbsoluteSize.X / 2
                     local centerY = arrowGui.AbsoluteSize.Y * 0.3  -- 30% from top
                     
-                    -- Position arrow in a circle around center
-                    local radius = 150
+                    local radius = 120
                     local angleRad = math.rad(angle)
                     
                     local x = centerX + math.sin(angleRad) * radius
                     local y = centerY - math.cos(angleRad) * radius
+                    
+                    -- Clamp to screen edges
+                    x = math.clamp(x, 40, arrowGui.AbsoluteSize.X - 40)
+                    y = math.clamp(y, 40, arrowGui.AbsoluteSize.Y - 40)
                     
                     arrow.Position = UDim2.new(0, x - 20, 0, y - 20)
                     arrow.Rotation = angle
