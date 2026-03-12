@@ -1,6 +1,6 @@
 -- modules/StaffList.lua
 -- Staff List module for Forsaken Hub
--- Version: 1.3 (FIXED)
+-- Version: 3.0 (AUTO-DETECT RANKS)
 
 local StaffList = {}
 local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua"))()
@@ -18,35 +18,75 @@ local function debugPrint(...)
     print("[StaffList Debug]", ...)
 end
 
--- Function to check if player is staff - FIXED VERSION
-local function isStaff(userId)
-    -- Get the player object first
-    local targetPlayer = players:GetPlayerByUserId(userId)
-    if not targetPlayer then
-        debugPrint("Player not found for userId:", userId)
-        return false, nil
+-- We'll auto-detect ranks! This will be filled dynamically
+local STAFF_RANKS = {}  -- Empty for now, will be filled
+
+-- Function to learn ranks
+local function learnRanks()
+    debugPrint("=== LEARNING RANKS ===")
+    local foundRanks = {}
+    
+    -- Check all players
+    for _, plr in pairs(players:GetPlayers()) do
+        local rankNum = plr:GetRankInGroup(Config.StaffGroup.GroupID)
+        if rankNum and rankNum > 0 then
+            -- Try to get rank name (if possible)
+            local rankName = "Unknown"
+            local success, name = pcall(function()
+                return plr:GetRoleInGroup(Config.StaffGroup.GroupID)
+            end)
+            if success and name and name ~= "Guest" then
+                rankName = name
+            end
+            
+            debugPrint("Found:", plr.Name, "-> Rank", rankNum, "(" .. rankName .. ")")
+            foundRanks[rankNum] = rankName
+        end
     end
     
-    -- Use :GetRankInGroup on the player object, not on Players service
-    local success, rank = pcall(function()
+    -- Match with our target ranks from config
+    -- We'll try to map them based on common patterns
+    local targetRanks = {"Testers", "Moderator", "Developer", "Owner"}
+    
+    -- Sort found ranks by number (lower numbers first)
+    local sorted = {}
+    for num, name in pairs(foundRanks) do
+        table.insert(sorted, {num = num, name = name})
+    end
+    table.sort(sorted, function(a, b) return a.num < b.num end)
+    
+    -- Try to assign them in order
+    for i, targetRank in ipairs(targetRanks) do
+        if sorted[i] then
+            STAFF_RANKS[sorted[i].num] = targetRank
+            debugPrint("✅ Mapped rank", sorted[i].num, "->", targetRank)
+        else
+            debugPrint("⚠️ Could not find rank for", targetRank)
+        end
+    end
+    
+    debugPrint("=== LEARNING COMPLETE ===")
+end
+
+-- Function to check if player is staff
+local function isStaff(targetPlayer)
+    if not targetPlayer then return false, nil end
+    
+    local success, rankNumber = pcall(function()
         return targetPlayer:GetRankInGroup(Config.StaffGroup.GroupID)
     end)
     
-    debugPrint("Player", targetPlayer.Name, "Rank from player:GetRankInGroup():", rank or "nil", "Success:", success)
+    debugPrint("Player", targetPlayer.Name, "Rank number:", rankNumber or "nil")
     
-    if success and rank then
-        -- Convert rank to string and check
-        local rankName = tostring(rank)
-        debugPrint("Rank name:", rankName)
-        
-        if Config.StaffGroup.Ranks[rankName] == true then
-            debugPrint("✅ Staff found:", rankName)
+    if success and rankNumber and rankNumber > 0 then
+        -- Check if this rank number is in our staff list
+        local rankName = STAFF_RANKS[rankNumber]
+        if rankName then
+            debugPrint("✅ Staff found:", rankName, "(rank", rankNumber, ")")
             return true, rankName
         else
-            debugPrint("❌ Not in staff ranks:", rankName)
+            debugPrint("❌ Rank", rankNumber, "not in staff list (needs mapping)")
         end
-    else
-        debugPrint("❌ Failed to get rank")
     end
     
     return false, nil
@@ -54,12 +94,12 @@ end
 
 -- Function to update staff list
 local function updateStaffList()
-    if not staffListFrame or not enabled then 
-        debugPrint("Update skipped - not enabled or no frame")
-        return 
-    end
+    if not staffListFrame or not enabled then return end
     
-    debugPrint("=== Updating Staff List ===")
+    -- Learn ranks if we haven't yet
+    if not next(STAFF_RANKS) then
+        learnRanks()
+    end
     
     -- Clear old entries
     for _, v in pairs(staffListFrame:GetChildren()) do
@@ -69,23 +109,18 @@ local function updateStaffList()
     end
     
     local yOffset = 5
-    local maxWidth = 180 -- Base width
+    local maxWidth = 180
     local entries = {}
     
     -- Check all players
     for _, plr in pairs(players:GetPlayers()) do
-        debugPrint("Checking player:", plr.Name, "ID:", plr.UserId)
-        
         if plr ~= players.LocalPlayer then
-            local isStaffMember, rank = isStaff(plr.UserId)
+            local isStaffMember, rankName = isStaff(plr)
             if isStaffMember then
-                debugPrint("✅ Adding to list:", plr.Name, "as", rank)
-                table.insert(entries, {player = plr, rank = rank})
+                table.insert(entries, {player = plr, rank = rankName})
             end
         end
     end
-    
-    debugPrint("Total staff found:", #entries)
     
     -- Sort entries by rank priority
     table.sort(entries, function(a, b)
@@ -114,7 +149,6 @@ local function updateStaffList()
         local textWidth = tempLabel.TextBounds.X + 40
         tempLabel:Destroy()
         
-        -- Adjust max width if needed
         if textWidth > maxWidth then
             maxWidth = textWidth
         end
@@ -173,7 +207,6 @@ local function updateStaffList()
         staffListFrame.Parent.Size = UDim2.new(0, maxWidth, 0, yOffset + 5)
         staffListFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 5)
     else
-        -- Show message if no staff
         local noStaff = Instance.new("TextLabel")
         noStaff.Name = "StaffEntry"
         noStaff.Size = UDim2.new(1, -10, 0, 30)
@@ -188,15 +221,12 @@ local function updateStaffList()
         staffListFrame.Parent.Size = UDim2.new(0, 200, 0, 40)
         staffListFrame.CanvasSize = UDim2.new(0, 0, 0, 40)
     end
-    
-    debugPrint("=== Update Complete ===")
 end
 
 -- Function to create staff list
 function StaffList:Create(parentGui)
     screenGui = parentGui
     
-    -- Create main frame
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "StaffList"
     mainFrame.Size = UDim2.new(0, 200, 0, 40)
@@ -213,7 +243,6 @@ function StaffList:Create(parentGui)
     mainCorner.CornerRadius = UDim.new(0, 8)
     mainCorner.Parent = mainFrame
     
-    -- Title bar
     local titleBar = Instance.new("Frame")
     titleBar.Size = UDim2.new(1, 0, 0, 25)
     titleBar.BackgroundColor3 = Config.Theme.Darker
@@ -252,7 +281,6 @@ function StaffList:Create(parentGui)
         StaffList:Toggle(false)
     end)
     
-    -- Container for staff entries (ScrollingFrame)
     staffListFrame = Instance.new("ScrollingFrame")
     staffListFrame.Name = "StaffContainer"
     staffListFrame.Size = UDim2.new(1, 0, 1, -25)
@@ -264,46 +292,31 @@ function StaffList:Create(parentGui)
     staffListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     staffListFrame.Parent = mainFrame
     
-    staffListFrame = staffListFrame -- Store reference
-    
     return mainFrame
 end
 
--- Function to toggle staff list
 function StaffList:Toggle(state)
     enabled = state
-    debugPrint("Toggle:", state)
     
-    if not staffListFrame then 
-        debugPrint("No staffListFrame")
-        return 
-    end
+    if not staffListFrame then return end
     
     local mainFrame = staffListFrame.Parent
-    if not mainFrame then 
-        debugPrint("No mainFrame")
-        return 
-    end
+    if not mainFrame then return end
     
     mainFrame.Visible = state
     
     if state then
-        -- Initial update
+        -- Learn ranks first
+        learnRanks()
         updateStaffList()
         
-        -- Connect player events
-        players.PlayerAdded:Connect(function(plr)
-            debugPrint("Player added:", plr.Name)
-            task.wait(1) -- Wait for rank to load
+        players.PlayerAdded:Connect(function()
+            task.wait(1)
             updateStaffList()
         end)
         
-        players.PlayerRemoving:Connect(function(plr)
-            debugPrint("Player removed:", plr.Name)
-            updateStaffList()
-        end)
+        players.PlayerRemoving:Connect(updateStaffList)
         
-        -- Update every 5 seconds
         spawn(function()
             while enabled do
                 task.wait(5)
@@ -311,11 +324,6 @@ function StaffList:Toggle(state)
             end
         end)
     end
-end
-
--- Function to check if staff list exists
-function StaffList:Exists()
-    return staffListFrame and staffListFrame.Parent and staffListFrame.Parent.Visible
 end
 
 return StaffList
