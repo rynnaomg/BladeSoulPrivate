@@ -1,6 +1,6 @@
 -- modules/StaffList.lua
 -- Staff List module for Forsaken Hub
--- Version: 5.2 (ALL RANKS READY)
+-- Version: 5.3 (FIXED GroupService)
 
 local StaffList = {}
 local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua"))()
@@ -8,20 +8,27 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynna
 
 local players = Library.Services.Players
 local tween = Library.Services.Tween
-local GroupService = game:GetService("GroupService")
+
+-- ===== ИСПРАВЛЕНО: Правильный способ получить GroupService =====
+local GroupService
+local success, result = pcall(function()
+    return game:GetService("GroupService")
+end)
+if success then
+    GroupService = result
+else
+    -- Альтернативный вариант
+    GroupService = game:GetService("Groups")
+end
 
 local screenGui = nil
 local staffListFrame = nil
 local enabled = false
 
 -- ===== ТВОИ РЕАЛЬНЫЕ НОМЕРА РАНГОВ =====
--- ЗДЕСЬ НУЖНО ВПИСАТЬ ВСЕ ЧИСЛА!
 local STAFF_RANKS = {
-    [225] = "Moderator",  -- ✅ Твой ранг (уже работает)
-    [???] = "Testers",    -- ⚠️ ВПИШИ СЮДА НОМЕР Testers
-    [???] = "Developer",  -- ⚠️ ВПИШИ СЮДА НОМЕР Developer
-    [255] = "Owner",      -- Owner обычно 255 [citation:4]
-    -- Добавь другие ранги если есть
+    [225] = "Moderator",  -- Твой ранг
+    -- Добавим остальные когда узнаем
 }
 
 -- Debug функция
@@ -29,8 +36,13 @@ local function debugPrint(...)
     print("[StaffList Debug]", ...)
 end
 
--- Функция проверки staff
+-- Функция проверки staff через GroupService
 local function checkStaff(userId)
+    if not GroupService then
+        debugPrint("GroupService not available")
+        return false, nil
+    end
+    
     local success, groups = pcall(function()
         return GroupService:GetGroupsAsync(userId)
     end)
@@ -41,7 +53,7 @@ local function checkStaff(userId)
     
     for _, groupData in ipairs(groups) do
         if groupData.Id == Config.StaffGroup.GroupID then
-            local rankNumber = groupData.Rank  -- Это число!
+            local rankNumber = groupData.Rank
             
             -- Проверяем по нашим известным номерам
             local rankName = STAFF_RANKS[rankNumber]
@@ -50,7 +62,6 @@ local function checkStaff(userId)
                 return true, rankName
             else
                 debugPrint("⚠️ Неизвестный номер ранга:", rankNumber)
-                -- Временно показываем как "Rank X" чтобы ты видел числа
                 return true, "Rank " .. rankNumber
             end
         end
@@ -192,7 +203,7 @@ function StaffList:Create(parentGui)
     
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "StaffList"
-    mainFrame.Size = UDim2.new(0, 240, 0, 250)  -- Ещё больше!
+    mainFrame.Size = UDim2.new(0, 240, 0, 250)
     mainFrame.Position = UDim2.new(0, 10, 0, 50)
     mainFrame.BackgroundColor3 = Config.Theme.Background
     mainFrame.BorderSizePixel = 0
