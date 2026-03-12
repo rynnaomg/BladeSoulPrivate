@@ -1,5 +1,6 @@
 -- modules/StaffList.lua
 -- Staff List module for Forsaken Hub
+-- Version: 1.2 (with debug)
 
 local StaffList = {}
 local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua"))()
@@ -12,21 +13,57 @@ local staffListFrame = nil
 local enabled = false
 local updateConnection = nil
 
+-- Debug function
+local function debugPrint(...)
+    print("[StaffList Debug]", ...)
+end
+
 -- Function to check if player is staff
 local function isStaff(userId)
+    -- Method 1: GetRankInGroup
     local success, rank = pcall(function()
         return players:GetRankInGroup(Config.StaffGroup.GroupID, userId)
     end)
     
+    debugPrint("Player", userId, "Rank from GetRankInGroup:", rank or "nil", "Success:", success)
+    
     if success and rank then
-        return Config.StaffGroup.Ranks[rank] == true, rank
+        -- Check if rank is in our list
+        if Config.StaffGroup.Ranks[rank] == true then
+            debugPrint("✅ Staff found:", rank)
+            return true, rank
+        else
+            debugPrint("❌ Not in staff ranks:", rank)
+        end
+    else
+        debugPrint("❌ Failed to get rank")
     end
+    
+    -- Method 2: Try GetRoleInGroup as backup
+    local success2, role = pcall(function()
+        return players:GetRoleInGroup(Config.StaffGroup.GroupID, userId)
+    end)
+    
+    debugPrint("Player", userId, "Role from GetRoleInGroup:", role or "nil", "Success:", success2)
+    
+    if success2 and role then
+        if Config.StaffGroup.Ranks[role] == true then
+            debugPrint("✅ Staff found via role:", role)
+            return true, role
+        end
+    end
+    
     return false, nil
 end
 
 -- Function to update staff list
 local function updateStaffList()
-    if not staffListFrame or not enabled then return end
+    if not staffListFrame or not enabled then 
+        debugPrint("Update skipped - not enabled or no frame")
+        return 
+    end
+    
+    debugPrint("=== Updating Staff List ===")
     
     -- Clear old entries
     for _, v in pairs(staffListFrame:GetChildren()) do
@@ -41,13 +78,18 @@ local function updateStaffList()
     
     -- Check all players
     for _, plr in pairs(players:GetPlayers()) do
+        debugPrint("Checking player:", plr.Name, "ID:", plr.UserId)
+        
         if plr ~= players.LocalPlayer then
             local isStaffMember, rank = isStaff(plr.UserId)
             if isStaffMember then
+                debugPrint("✅ Adding to list:", plr.Name, "as", rank)
                 table.insert(entries, {player = plr, rank = rank})
             end
         end
     end
+    
+    debugPrint("Total staff found:", #entries)
     
     -- Sort entries by rank priority
     table.sort(entries, function(a, b)
@@ -150,6 +192,8 @@ local function updateStaffList()
         staffListFrame.Parent.Size = UDim2.new(0, 200, 0, 40)
         staffListFrame.CanvasSize = UDim2.new(0, 0, 0, 40)
     end
+    
+    debugPrint("=== Update Complete ===")
 end
 
 -- Function to create staff list
@@ -232,11 +276,18 @@ end
 -- Function to toggle staff list
 function StaffList:Toggle(state)
     enabled = state
+    debugPrint("Toggle:", state)
     
-    if not staffListFrame then return end
+    if not staffListFrame then 
+        debugPrint("No staffListFrame")
+        return 
+    end
     
     local mainFrame = staffListFrame.Parent
-    if not mainFrame then return end
+    if not mainFrame then 
+        debugPrint("No mainFrame")
+        return 
+    end
     
     mainFrame.Visible = state
     
@@ -245,16 +296,25 @@ function StaffList:Toggle(state)
         updateStaffList()
         
         -- Connect player events
-        players.PlayerAdded:Connect(updateStaffList)
-        players.PlayerRemoving:Connect(updateStaffList)
+        players.PlayerAdded:Connect(function(plr)
+            debugPrint("Player added:", plr.Name)
+            task.wait(1) -- Wait for rank to load
+            updateStaffList()
+        end)
+        
+        players.PlayerRemoving:Connect(function(plr)
+            debugPrint("Player removed:", plr.Name)
+            updateStaffList()
+        end)
         
         -- Update every 5 seconds
         if updateConnection then
             updateConnection:Disconnect()
         end
-        updateConnection = game:GetService("RunService").Heartbeat:Connect(function()
-            task.wait(5)
-            if enabled then
+        
+        spawn(function()
+            while enabled do
+                task.wait(5)
                 updateStaffList()
             end
         end)
