@@ -1,6 +1,6 @@
 -- modules/ESP.lua
 -- ESP module for Forsaken Hub
--- Version: 2.0 (Clean design, no flickering)
+-- Version: 2.1 (Fixed local player check)
 
 local ESP = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
@@ -19,16 +19,9 @@ local currentCharacters = {}
 local function cleanupCharacterESP(character)
     if not character then return end
     
-    -- Remove highlight
     local highlight = character:FindFirstChild("ForsakenESP")
     if highlight then
         pcall(function() highlight:Destroy() end)
-    end
-    
-    -- Remove billboard
-    local billboard = character:FindFirstChild("ForsakenESPName")
-    if billboard then
-        pcall(function() billboard:Destroy() end)
     end
 end
 
@@ -43,26 +36,25 @@ local function cleanupAllESP()
     table.clear(currentCharacters)
 end
 
--- Create ESP highlight only (no name tag)
+-- Create ESP highlight only
 local function createESP(character, team)
     if not character or not character:FindFirstChild("Humanoid") then return end
     
-    -- Check if this is local player
+    -- FIXED: Better check for local player
     local isLocalPlayer = false
-    for _, plr in pairs(players:GetPlayers()) do
-        if plr.Character == character and plr == localPlayer then
-            isLocalPlayer = true
-            break
-        end
+    if localPlayer and localPlayer.Character == character then
+        isLocalPlayer = true
     end
     
     -- Skip local player
-    if isLocalPlayer then return end
+    if isLocalPlayer then 
+        return 
+    end
     
     -- Remove old ESP if exists
     cleanupCharacterESP(character)
     
-    -- Create highlight box only (no name tag)
+    -- Create highlight box
     local highlight = Instance.new("Highlight")
     highlight.Name = "ForsakenESP"
     highlight.Parent = character
@@ -70,10 +62,10 @@ local function createESP(character, team)
     
     -- Team colors
     if team == "Killers" then
-        highlight.FillColor = Color3.fromRGB(255, 80, 80)  -- Softer red
+        highlight.FillColor = Color3.fromRGB(255, 80, 80)
         highlight.OutlineColor = Color3.fromRGB(200, 40, 40)
     elseif team == "Survivors" then
-        highlight.FillColor = Color3.fromRGB(80, 255, 80)  -- Softer green
+        highlight.FillColor = Color3.fromRGB(80, 255, 80)
         highlight.OutlineColor = Color3.fromRGB(40, 200, 40)
     end
     
@@ -87,10 +79,9 @@ end
 local function updateESP()
     if not enabled then return end
     
-    -- Track current characters to detect removed ones
+    -- Track current characters
     local newCharacters = {}
     
-    -- Check if workspace and Players folder exist
     local playersFolder = workspace:FindFirstChild("Players")
     if not playersFolder then 
         cleanupAllESP()
@@ -104,7 +95,6 @@ local function updateESP()
             if character:IsA("Model") and character:FindFirstChild("Humanoid") then
                 newCharacters[character] = "Killers"
                 
-                -- Only create if not already exists
                 if not currentCharacters[character] then
                     local esp = createESP(character, "Killers")
                     if esp then
@@ -123,7 +113,6 @@ local function updateESP()
             if character:IsA("Model") and character:FindFirstChild("Humanoid") then
                 newCharacters[character] = "Survivors"
                 
-                -- Only create if not already exists
                 if not currentCharacters[character] then
                     local esp = createESP(character, "Survivors")
                     if esp then
@@ -149,10 +138,8 @@ function ESP:Toggle(state)
     enabled = state
     
     if enabled then
-        -- Initial update
         updateESP()
         
-        -- Update loop (every 0.5 seconds instead of 1 for smoother transitions)
         spawn(function()
             while enabled do
                 updateESP()
@@ -160,7 +147,6 @@ function ESP:Toggle(state)
             end
         end)
         
-        -- Listen for changes
         local playersFolder = workspace:FindFirstChild("Players")
         if playersFolder then
             local killersFolder = playersFolder:FindFirstChild("Killers")
@@ -182,7 +168,6 @@ function ESP:Toggle(state)
             end
         end
         
-        -- Listen for new rounds
         local conn = workspace.ChildAdded:Connect(function(child)
             if child.Name == "Players" then
                 task.wait(0.5)
@@ -192,7 +177,6 @@ function ESP:Toggle(state)
         table.insert(espConnections, conn)
         
     else
-        -- Clean up
         for _, conn in ipairs(espConnections) do
             pcall(function() conn:Disconnect() end)
         end
