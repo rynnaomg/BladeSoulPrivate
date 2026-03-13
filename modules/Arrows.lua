@@ -1,6 +1,6 @@
 -- modules/Arrows.lua
 -- Arrow module for Forsaken Hub
--- Version: 3.0 (Fixed direction math)
+-- Version: 3.1 (Fixed arrow image, proper cleanup, correct colors)
 
 local Arrows = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
@@ -16,6 +16,7 @@ local arrowConnections = {}
 local arrowGui = nil
 local arrows = {}
 local playerTeam = nil
+local currentTargetTeam = nil
 
 -- Safe function to get camera
 local function getSafeCamera()
@@ -64,7 +65,7 @@ local function createArrowGUI()
     end
 end
 
--- Create a single arrow
+-- Create a single arrow with REAL arrow image
 local function createArrow(targetPlayer, targetTeam)
     if not arrowGui then return nil end
     
@@ -77,12 +78,12 @@ local function createArrow(targetPlayer, targetTeam)
         container.BackgroundTransparency = 1
         container.Parent = arrowGui
         
-        -- Arrow image
+        -- REAL ARROW IMAGE (not play button)
         local img = Instance.new("ImageLabel")
         img.Name = "ArrowImage"
         img.Size = UDim2.new(1, 0, 1, 0)
         img.BackgroundTransparency = 1
-        img.Image = "rbxassetid://6031090990"
+        img.Image = "rbxassetid://6034810872"  -- This is a REAL arrow
         img.ImageColor3 = targetTeam == "Killers" and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 80)
         img.Rotation = 0
         img.Parent = container
@@ -113,6 +114,11 @@ local function getPlayerTeam(player)
         local playersFolder = workspace:FindFirstChild("Players")
         if not playersFolder then return nil end
         
+        -- Check if we're in lobby (no Killers/Survivors folders)
+        if not playersFolder:FindFirstChild("Killers") and not playersFolder:FindFirstChild("Survivors") then
+            return "Lobby"
+        end
+        
         local killersFolder = playersFolder:FindFirstChild("Killers")
         if killersFolder then
             for _, character in ipairs(killersFolder:GetChildren()) do
@@ -137,16 +143,18 @@ local function getPlayerTeam(player)
     return success and result
 end
 
--- FIXED: Calculate correct angle to target [citation:1][citation:5]
+-- Clean all arrows
+local function cleanAllArrows()
+    for _, arrow in pairs(arrows) do
+        pcall(function() arrow:Destroy() end)
+    end
+    table.clear(arrows)
+end
+
+-- Calculate correct angle to target
 local function getAngleToTarget(camera, targetPos, cameraPos)
-    -- Convert target position to camera space
     local relativePos = camera.CFrame:PointToObjectSpace(targetPos)
-    
-    -- Calculate angle using atan2 with correct X and Z axes
-    -- This gives us the horizontal angle (left/right) [citation:5]
     local angle = math.atan2(relativePos.X, -relativePos.Z)
-    
-    -- Convert to degrees
     return math.deg(angle)
 end
 
@@ -161,11 +169,34 @@ local function updateArrows()
     if not camera or not camera.CFrame then return end
     
     -- Get local player team
-    playerTeam = getPlayerTeam(localPlayer)
+    local newPlayerTeam = getPlayerTeam(localPlayer)
+    
+    -- Check if we're in lobby
+    if newPlayerTeam == "Lobby" or not newPlayerTeam then
+        -- In lobby - hide all arrows
+        for _, arrow in pairs(arrows) do
+            arrow.Visible = false
+        end
+        playerTeam = newPlayerTeam
+        return
+    end
+    
+    -- If team changed, clean all arrows (they will be recreated with new colors)
+    if newPlayerTeam ~= playerTeam then
+        cleanAllArrows()
+        playerTeam = newPlayerTeam
+    end
+    
     if not playerTeam then return end
     
     -- Determine targets
     local targetTeam = playerTeam == "Killers" and "Survivors" or "Killers"
+    
+    -- If target team changed, clean arrows
+    if targetTeam ~= currentTargetTeam then
+        cleanAllArrows()
+        currentTargetTeam = targetTeam
+    end
     
     -- Get targets safely
     local targets = {}
@@ -203,7 +234,7 @@ local function updateArrows()
         targets = folders
     end
     
-    -- Clean up old arrows
+    -- Clean up old arrows (players who left)
     for playerName, arrow in pairs(arrows) do
         local stillTarget = false
         for _, target in ipairs(targets) do
@@ -225,7 +256,7 @@ local function updateArrows()
     -- Update arrows
     for _, target in ipairs(targets) do
         if target.rootPart then
-            -- Get or create arrow
+            -- Get or create arrow (with correct team color)
             local arrow = arrows[target.player.Name]
             if not arrow then
                 arrow = createArrow(target.player, targetTeam)
@@ -248,10 +279,10 @@ local function updateArrows()
                     text.Text = distanceText .. "m"
                 end
                 
-                -- Always visible
+                -- Always visible when in game
                 arrow.Visible = true
                 
-                -- FIXED: Get correct angle using the new function
+                -- Get correct angle
                 local angle = getAngleToTarget(camera, targetPos, cameraPos)
                 
                 -- Position arrow in a circle around exact center
@@ -271,11 +302,14 @@ local function updateArrows()
                 
                 arrow.Position = UDim2.new(0, x - 15, 0, y - 15)
                 
-                -- Rotate arrow image to point outward from center [citation:2]
+                -- Rotate arrow image
                 local img = arrow:FindFirstChild("ArrowImage")
                 if img then
-                    -- Arrow should point away from center toward the target
-                    img.Rotation = angle + 90  -- +90 because arrow image points up by default [citation:4]
+                    img.Rotation = angle + 90
+                    
+                    -- Update color in case team changed
+                    local newColor = targetTeam == "Killers" and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 80)
+                    img.ImageColor3 = newColor
                 end
             end
         end
@@ -289,6 +323,11 @@ function Arrows:Toggle(state)
     if enabled then
         -- Create GUI
         createArrowGUI()
+        
+        -- Reset state
+        playerTeam = nil
+        currentTargetTeam = nil
+        cleanAllArrows()
         
         -- Initial update
         updateArrows()
@@ -308,6 +347,16 @@ function Arrows:Toggle(state)
         end)
         table.insert(arrowConnections, conn2)
         
+        -- Also listen for workspace changes (round end/start)
+        local conn3 = workspace.ChildRemoved:Connect(function()
+            task.wait(0.5)
+            -- Clean arrows when round ends
+            cleanAllArrows()
+            playerTeam = nil
+            currentTargetTeam = nil
+        end)
+        table.insert(arrowConnections, conn3)
+        
     else
         -- Clean up
         for _, conn in ipairs(arrowConnections) do
@@ -315,15 +364,15 @@ function Arrows:Toggle(state)
         end
         table.clear(arrowConnections)
         
-        for _, arrow in pairs(arrows) do
-            pcall(function() arrow:Destroy() end)
-        end
-        table.clear(arrows)
+        cleanAllArrows()
         
         if arrowGui then
             pcall(function() arrowGui:Destroy() end)
             arrowGui = nil
         end
+        
+        playerTeam = nil
+        currentTargetTeam = nil
     end
 end
 
