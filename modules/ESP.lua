@@ -1,6 +1,6 @@
 -- modules/ESP.lua
 -- ESP module for Forsaken Hub
--- Version: 2.3 (Force visibility through invisibility)
+-- Version: 2.3 (Force Transparency=0)
 
 local ESP = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua?nocache=" .. tostring(os.time())))()
@@ -19,30 +19,15 @@ local currentCharacters = {}
 local function cleanupCharacterESP(character)
     if not character then return end
     local highlight = character:FindFirstChild("ForsakenESP")
-    if highlight then
-        pcall(function() highlight:Destroy() end)
-    end
+    if highlight then pcall(function() highlight:Destroy() end) end
 end
 
 local function cleanupAllESP()
     for obj in pairs(espObjects) do
-        if obj and obj.Parent then
-            pcall(function() obj:Destroy() end)
-        end
+        if obj and obj.Parent then pcall(function() obj:Destroy() end) end
     end
     table.clear(espObjects)
     table.clear(currentCharacters)
-end
-
-local function forceVisible(character)
-    if not character then return end
-    for _, part in ipairs(character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            pcall(function()
-                part.LocalTransparencyModifier = 0
-            end)
-        end
-    end
 end
 
 local function createESP(character, team)
@@ -75,12 +60,8 @@ local function updateESP()
     if not enabled then return end
     
     local newCharacters = {}
-    
     local playersFolder = workspace:FindFirstChild("Players")
-    if not playersFolder then
-        cleanupAllESP()
-        return
-    end
+    if not playersFolder then cleanupAllESP(); return end
     
     local killersFolder = playersFolder:FindFirstChild("Killers")
     if killersFolder then
@@ -89,12 +70,8 @@ local function updateESP()
                 newCharacters[character] = "Killers"
                 if not currentCharacters[character] then
                     local esp = createESP(character, "Killers")
-                    if esp then
-                        espObjects[esp] = true
-                        currentCharacters[character] = "Killers"
-                    end
+                    if esp then espObjects[esp] = true; currentCharacters[character] = "Killers" end
                 end
-                forceVisible(character)
             end
         end
     end
@@ -106,12 +83,8 @@ local function updateESP()
                 newCharacters[character] = "Survivors"
                 if not currentCharacters[character] then
                     local esp = createESP(character, "Survivors")
-                    if esp then
-                        espObjects[esp] = true
-                        currentCharacters[character] = "Survivors"
-                    end
+                    if esp then espObjects[esp] = true; currentCharacters[character] = "Survivors" end
                 end
-                forceVisible(character)
             end
         end
     end
@@ -130,14 +103,19 @@ function ESP:Toggle(state)
     if enabled then
         updateESP()
         
+        -- Каждый кадр принудительно ставим Transparency=0 всем чужим игрокам
         local renderConn = runService.RenderStepped:Connect(function()
-            if enabled then
-                local playersFolder = workspace:FindFirstChild("Players")
-                if playersFolder then
-                    for _, folder in ipairs(playersFolder:GetChildren()) do
-                        for _, character in ipairs(folder:GetChildren()) do
-                            if character:IsA("Model") and character ~= (localPlayer and localPlayer.Character) then
-                                forceVisible(character)
+            if not enabled then return end
+            local playersFolder = workspace:FindFirstChild("Players")
+            if not playersFolder then return end
+            for _, folder in ipairs(playersFolder:GetChildren()) do
+                if folder:IsA("Folder") then
+                    for _, character in ipairs(folder:GetChildren()) do
+                        if character:IsA("Model") and character ~= (localPlayer and localPlayer.Character) then
+                            for _, part in ipairs(character:GetDescendants()) do
+                                if part:IsA("BasePart") and part.Transparency == 1 then
+                                    pcall(function() part.Transparency = 0 end)
+                                end
                             end
                         end
                     end
@@ -147,44 +125,30 @@ function ESP:Toggle(state)
         table.insert(espConnections, renderConn)
         
         spawn(function()
-            while enabled do
-                updateESP()
-                task.wait(0.5)
-            end
+            while enabled do updateESP(); task.wait(0.5) end
         end)
         
         local playersFolder = workspace:FindFirstChild("Players")
         if playersFolder then
             local killersFolder = playersFolder:FindFirstChild("Killers")
             if killersFolder then
-                local conn = killersFolder.ChildAdded:Connect(function()
-                    task.wait(0.1)
-                    updateESP()
-                end)
+                local conn = killersFolder.ChildAdded:Connect(function() task.wait(0.1); updateESP() end)
                 table.insert(espConnections, conn)
             end
             local survivorsFolder = playersFolder:FindFirstChild("Survivors")
             if survivorsFolder then
-                local conn = survivorsFolder.ChildAdded:Connect(function()
-                    task.wait(0.1)
-                    updateESP()
-                end)
+                local conn = survivorsFolder.ChildAdded:Connect(function() task.wait(0.1); updateESP() end)
                 table.insert(espConnections, conn)
             end
         end
         
         local conn = workspace.ChildAdded:Connect(function(child)
-            if child.Name == "Players" then
-                task.wait(0.5)
-                updateESP()
-            end
+            if child.Name == "Players" then task.wait(0.5); updateESP() end
         end)
         table.insert(espConnections, conn)
         
     else
-        for _, conn in ipairs(espConnections) do
-            pcall(function() conn:Disconnect() end)
-        end
+        for _, conn in ipairs(espConnections) do pcall(function() conn:Disconnect() end) end
         table.clear(espConnections)
         cleanupAllESP()
     end
