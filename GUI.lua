@@ -3,11 +3,11 @@
 -- Version: 3.0 (Redesigned sections)
 
 local GUI = {}
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
-local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua"))()
-local StaffList = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/modules/StaffList.lua"))()
-local ESP = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/modules/ESP.lua"))()
-local Arrows = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/modules/Arrows.lua"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua?nocache=" .. tostring(os.time())))()
+local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua?nocache=" .. tostring(os.time())))()
+local StaffList = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/modules/StaffList.lua?nocache=" .. tostring(os.time())))()
+local ESP = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/modules/ESP.lua?nocache=" .. tostring(os.time())))()
+local Arrows = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/modules/Arrows.lua?nocache=" .. tostring(os.time())))()
 
 local player = Library.Services.Players.LocalPlayer
 local tween = Library.Services.Tween
