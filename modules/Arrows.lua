@@ -1,6 +1,6 @@
 -- modules/Arrows.lua
 -- Arrow module for Forsaken Hub
--- Version: 5.0 (With local file caching)
+-- Version: 5.1 (Delta Executor compatible)
 
 local Arrows = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
@@ -11,54 +11,54 @@ local workspace = game:GetService("Workspace")
 local runService = game:GetService("RunService")
 local localPlayer = players.LocalPlayer
 
--- For local file operations (supported by executors)
-local isFileSupported = pcall(function() return readfile and writefile and isfile end)
-local ARROW_CACHE_PATH = "ForsakenHub/cache/arrow.png"
-local ARROW_GITHUB_URL = "https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/assets/arrow.png"
-
 local enabled = false
 local arrowConnections = {}
 local arrowGui = nil
 local arrows = {}
 local playerTeam = nil
 local currentTargetTeam = nil
-local arrowImageLoaded = false
+local arrowImagePath = nil
+
+-- Check if file operations are supported (Delta Executor)
+local fileSupported = pcall(function() 
+    return writefile and readfile and isfile and delfile
+end)
+
+if fileSupported then
+    print("[Arrows] File operations supported")
+else
+    warn("[Arrows] File operations not supported, using fallback")
+end
 
 -- Function to download and cache the arrow image
 local function ensureArrowImage()
-    if not isFileSupported then
-        warn("[Arrows] File operations not supported by this executor")
-        return "rbxassetid://6031090990" -- Fallback to Roblox arrow
+    if not fileSupported then
+        return "rbxassetid://6031090990" -- Fallback to working Roblox arrow
     end
     
-    -- Check if file already exists in cache
-    if isfile(ARROW_CACHE_PATH) then
-        print("[Arrows] Arrow image found in cache")
-        arrowImageLoaded = true
-        return "rbxasset://" .. ARROW_CACHE_PATH
+    local fileName = "arrow_cache.png"
+    local githubUrl = "https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/assets/arrow.png"
+    
+    -- Check if file already exists
+    if isfile(fileName) then
+        print("[Arrows] Using cached arrow image")
+        return "rbxasset://" .. fileName
     end
     
     -- Download from GitHub
     print("[Arrows] Downloading arrow image from GitHub...")
     local success, imageData = pcall(function()
-        return game:HttpGet(ARROW_GITHUB_URL)
+        return game:HttpGet(githubUrl)
     end)
     
-    if success and imageData then
-        -- Create cache folder if needed
-        local folderPath = "ForsakenHub/cache"
-        if not isfolder(folderPath) then
-            makefolder(folderPath)
-        end
-        
-        -- Save file
-        writefile(ARROW_CACHE_PATH, imageData)
-        print("[Arrows] Arrow image saved to cache")
-        arrowImageLoaded = true
-        return "rbxasset://" .. ARROW_CACHE_PATH
+    if success and imageData and #imageData > 0 then
+        -- Save to Delta Workspace folder
+        writefile(fileName, imageData)
+        print("[Arrows] Arrow image saved to:", fileName)
+        return "rbxasset://" .. fileName
     else
         warn("[Arrows] Failed to download arrow image, using fallback")
-        return "rbxassetid://6031090990" -- Fallback to Roblox arrow
+        return "rbxassetid://6031090990" -- Fallback to working Roblox arrow
     end
 end
 
@@ -114,17 +114,17 @@ local function createArrowGUI()
     end
 end
 
--- Create a single arrow (with cached image)
+-- Create a single arrow
 local function createArrow(targetPlayer, targetTeam)
     if not arrowGui then 
-        print("[Arrows] No GUI to create arrow")
         return nil 
     end
     
-    print("[Arrows] Creating arrow for", targetPlayer.Name, "team:", targetTeam)
-    
-    -- Get arrow image (cached or fallback)
+    -- Get arrow image (will download if needed)
     local arrowImage = ensureArrowImage()
+    if not arrowImagePath then
+        arrowImagePath = arrowImage
+    end
     
     local success, arrow = pcall(function()
         -- Main arrow container
@@ -136,7 +136,7 @@ local function createArrow(targetPlayer, targetTeam)
         container.Parent = arrowGui
         container.Visible = true
         
-        -- CACHED ARROW IMAGE
+        -- Arrow image
         local img = Instance.new("ImageLabel")
         img.Name = "ArrowImage"
         img.Size = UDim2.new(1, 0, 1, 0)
@@ -153,23 +153,17 @@ local function createArrow(targetPlayer, targetTeam)
         distanceText.Size = UDim2.new(1, 0, 0, 16)
         distanceText.Position = UDim2.new(0, 0, 1, 2)
         distanceText.BackgroundTransparency = 1
-        distanceText.Text = "??m"
+        distanceText.Text = "0m"
         distanceText.TextColor3 = Config.Theme.Text
         distanceText.TextSize = 10
         distanceText.Font = Enum.Font.GothamBold
         distanceText.Parent = container
         distanceText.Visible = true
         
-        print("[Arrows] Arrow created successfully for", targetPlayer.Name)
         return container
     end)
     
-    if not success then
-        warn("[Arrows] Failed to create arrow:", success)
-        return nil
-    end
-    
-    return arrow
+    return success and arrow
 end
 
 -- Get player's team safely
@@ -354,7 +348,6 @@ end
 
 -- Toggle arrows
 function Arrows:Toggle(state)
-    print("[Arrows] Toggle:", state)
     enabled = state
     
     if enabled then
@@ -364,7 +357,7 @@ function Arrows:Toggle(state)
         currentTargetTeam = nil
         cleanAllArrows()
         
-        -- Ensure arrow is cached before first use
+        -- Preload arrow image
         ensureArrowImage()
         
         updateArrows()
