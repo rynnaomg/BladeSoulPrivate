@@ -1,10 +1,10 @@
 -- modules/ESP.lua
 -- ESP module for Forsaken Hub
--- Version: 2.1 (Fixed local player check)
+-- Version: 2.2 (QueryHitbox support)
 
 local ESP = {}
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
-local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua?nocache=" .. tostring(os.time())))()
+local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua?nocache=" .. tostring(os.time())))()
 
 local players = Library.Services.Players
 local workspace = game:GetService("Workspace")
@@ -15,17 +15,22 @@ local espConnections = {}
 local espObjects = {}
 local currentCharacters = {}
 
--- Clean up ESP for a specific character
 local function cleanupCharacterESP(character)
     if not character then return end
-    
     local highlight = character:FindFirstChild("ForsakenESP")
     if highlight then
         pcall(function() highlight:Destroy() end)
     end
+    -- Also clean from QueryHitbox
+    local qh = character:FindFirstChild("QueryHitbox")
+    if qh then
+        local highlight2 = qh:FindFirstChild("ForsakenESP")
+        if highlight2 then
+            pcall(function() highlight2:Destroy() end)
+        end
+    end
 end
 
--- Clean up all ESP
 local function cleanupAllESP()
     for obj in pairs(espObjects) do
         if obj and obj.Parent then
@@ -36,31 +41,24 @@ local function cleanupAllESP()
     table.clear(currentCharacters)
 end
 
--- Create ESP highlight only
 local function createESP(character, team)
     if not character or not character:FindFirstChild("Humanoid") then return end
     
-    -- FIXED: Better check for local player
-    local isLocalPlayer = false
     if localPlayer and localPlayer.Character == character then
-        isLocalPlayer = true
+        return
     end
     
-    -- Skip local player
-    if isLocalPlayer then 
-        return 
-    end
-    
-    -- Remove old ESP if exists
     cleanupCharacterESP(character)
+
+    -- Use QueryHitbox if available (stays visible even when player is invisible)
+    local espTarget = character:FindFirstChild("QueryHitbox") or character
     
-    -- Create highlight box
     local highlight = Instance.new("Highlight")
     highlight.Name = "ForsakenESP"
-    highlight.Parent = character
+    highlight.Adornee = espTarget
+    highlight.Parent = espTarget
     highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     
-    -- Team colors
     if team == "Killers" then
         highlight.FillColor = Color3.fromRGB(255, 80, 80)
         highlight.OutlineColor = Color3.fromRGB(200, 40, 40)
@@ -75,26 +73,22 @@ local function createESP(character, team)
     return highlight
 end
 
--- Update ESP for all players
 local function updateESP()
     if not enabled then return end
     
-    -- Track current characters
     local newCharacters = {}
     
     local playersFolder = workspace:FindFirstChild("Players")
-    if not playersFolder then 
+    if not playersFolder then
         cleanupAllESP()
-        return 
+        return
     end
     
-    -- Process Killers
     local killersFolder = playersFolder:FindFirstChild("Killers")
     if killersFolder then
         for _, character in ipairs(killersFolder:GetChildren()) do
             if character:IsA("Model") and character:FindFirstChild("Humanoid") then
                 newCharacters[character] = "Killers"
-                
                 if not currentCharacters[character] then
                     local esp = createESP(character, "Killers")
                     if esp then
@@ -106,13 +100,11 @@ local function updateESP()
         end
     end
     
-    -- Process Survivors
     local survivorsFolder = playersFolder:FindFirstChild("Survivors")
     if survivorsFolder then
         for _, character in ipairs(survivorsFolder:GetChildren()) do
             if character:IsA("Model") and character:FindFirstChild("Humanoid") then
                 newCharacters[character] = "Survivors"
-                
                 if not currentCharacters[character] then
                     local esp = createESP(character, "Survivors")
                     if esp then
@@ -124,7 +116,6 @@ local function updateESP()
         end
     end
     
-    -- Clean up characters that no longer exist
     for character in pairs(currentCharacters) do
         if not newCharacters[character] then
             cleanupCharacterESP(character)
@@ -133,7 +124,6 @@ local function updateESP()
     end
 end
 
--- Toggle ESP
 function ESP:Toggle(state)
     enabled = state
     
