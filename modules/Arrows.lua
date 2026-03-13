@@ -1,6 +1,6 @@
 -- modules/Arrows.lua
 -- Arrow module for Forsaken Hub
--- Version: 5.1 (Delta Executor compatible)
+-- Version: 9.0 (Drawing API + Local file loading)
 
 local Arrows = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
@@ -13,56 +13,57 @@ local localPlayer = players.LocalPlayer
 
 local enabled = false
 local arrowConnections = {}
-local arrowGui = nil
-local arrows = {}
+local arrows = {} -- table: playerName -> { image, text, isKillerTarget }
 local playerTeam = nil
 local currentTargetTeam = nil
-local arrowImagePath = nil
+local arrowImageData = nil
 
--- Check if file operations are supported (Delta Executor)
-local fileSupported = pcall(function() 
-    return writefile and readfile and isfile and delfile
-end)
+-- File paths for Delta
+local ARROW_FILE_NAME = "forsaken_arrow.png"
+local ARROW_GITHUB_URL = "https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/assets/arrow.png"
 
-if fileSupported then
-    print("[Arrows] File operations supported")
-else
-    warn("[Arrows] File operations not supported, using fallback")
+-- Проверяем поддержку Drawing API (есть в Delta)
+local drawingSupported = Drawing and Drawing.new
+if not drawingSupported then
+    warn("[Arrows] Drawing API not supported. Arrows will not work.")
 end
 
--- Function to download and cache the arrow image
-local function ensureArrowImage()
-    if not fileSupported then
-        return "rbxassetid://6031090990" -- Fallback to working Roblox arrow
+-- Load or download arrow image (caching)
+local function loadArrowImage()
+    if arrowImageData then return arrowImageData end
+    if not isfile or not writefile then 
+        warn("[Arrows] File operations not supported")
+        return nil 
     end
-    
-    local fileName = "arrow_cache.png"
-    local githubUrl = "https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/assets/arrow.png"
-    
-    -- Check if file already exists
-    if isfile(fileName) then
-        print("[Arrows] Using cached arrow image")
-        return "rbxasset://" .. fileName
+
+    -- If file exists, read it
+    if isfile(ARROW_FILE_NAME) then
+        print("[Arrows] Loading cached arrow image")
+        local success, data = pcall(readfile, ARROW_FILE_NAME)
+        if success and data then
+            arrowImageData = data
+            return arrowImageData
+        end
     end
-    
+
     -- Download from GitHub
     print("[Arrows] Downloading arrow image from GitHub...")
-    local success, imageData = pcall(function()
-        return game:HttpGet(githubUrl)
+    local success, data = pcall(function()
+        return game:HttpGet(ARROW_GITHUB_URL)
     end)
-    
-    if success and imageData and #imageData > 0 then
-        -- Save to Delta Workspace folder
-        writefile(fileName, imageData)
-        print("[Arrows] Arrow image saved to:", fileName)
-        return "rbxasset://" .. fileName
+
+    if success and data and #data > 0 then
+        writefile(ARROW_FILE_NAME, data)
+        print("[Arrows] Arrow saved to Delta/Workspace")
+        arrowImageData = data
+        return arrowImageData
     else
-        warn("[Arrows] Failed to download arrow image, using fallback")
-        return "rbxassetid://6031090990" -- Fallback to working Roblox arrow
+        warn("[Arrows] Failed to download arrow")
+        return nil
     end
 end
 
--- Safe function to get camera
+-- Safe camera getter
 local function getSafeCamera()
     local success, result = pcall(function()
         return workspace.CurrentCamera
@@ -70,103 +71,16 @@ local function getSafeCamera()
     return success and result
 end
 
--- Safe function to get character root part
+-- Safe root part getter
 local function getCharacterRootPart(character)
     if not character then return nil end
-    
     local success, result = pcall(function()
         return character:FindFirstChild("HumanoidRootPart")
     end)
     return success and result
 end
 
--- Safe function to get character humanoid
-local function getCharacterHumanoid(character)
-    if not character then return nil end
-    
-    local success, result = pcall(function()
-        return character:FindFirstChild("Humanoid")
-    end)
-    return success and result
-end
-
--- Create arrow GUI
-local function createArrowGUI()
-    if arrowGui and arrowGui.Parent then
-        return
-    end
-    
-    local success, result = pcall(function()
-        local gui = Instance.new("ScreenGui")
-        gui.Name = "ForsakenArrows"
-        gui.Parent = localPlayer:WaitForChild("PlayerGui")
-        gui.ResetOnSpawn = false
-        gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        gui.IgnoreGuiInset = true
-        return gui
-    end)
-    
-    if success and result then
-        arrowGui = result
-        print("[Arrows] GUI created successfully")
-    else
-        warn("[Arrows] Failed to create GUI")
-    end
-end
-
--- Create a single arrow
-local function createArrow(targetPlayer, targetTeam)
-    if not arrowGui then 
-        return nil 
-    end
-    
-    -- Get arrow image (will download if needed)
-    local arrowImage = ensureArrowImage()
-    if not arrowImagePath then
-        arrowImagePath = arrowImage
-    end
-    
-    local success, arrow = pcall(function()
-        -- Main arrow container
-        local container = Instance.new("Frame")
-        container.Name = "Arrow_" .. targetPlayer.Name
-        container.Size = UDim2.new(0, 30, 0, 30)
-        container.Position = UDim2.new(0.5, -15, 0.5, -15)
-        container.BackgroundTransparency = 1
-        container.Parent = arrowGui
-        container.Visible = true
-        
-        -- Arrow image
-        local img = Instance.new("ImageLabel")
-        img.Name = "ArrowImage"
-        img.Size = UDim2.new(1, 0, 1, 0)
-        img.BackgroundTransparency = 1
-        img.Image = arrowImage
-        img.ImageColor3 = targetTeam == "Killers" and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 80)
-        img.Rotation = 0
-        img.Parent = container
-        img.Visible = true
-        
-        -- Distance text
-        local distanceText = Instance.new("TextLabel")
-        distanceText.Name = "Distance"
-        distanceText.Size = UDim2.new(1, 0, 0, 16)
-        distanceText.Position = UDim2.new(0, 0, 1, 2)
-        distanceText.BackgroundTransparency = 1
-        distanceText.Text = "0m"
-        distanceText.TextColor3 = Config.Theme.Text
-        distanceText.TextSize = 10
-        distanceText.Font = Enum.Font.GothamBold
-        distanceText.Parent = container
-        distanceText.Visible = true
-        
-        return container
-    end)
-    
-    return success and arrow
-end
-
--- Get player's team safely
+-- Get player's team
 local function getPlayerTeam(player)
     if not player or not player.Character then return nil end
     
@@ -174,23 +88,24 @@ local function getPlayerTeam(player)
         local playersFolder = workspace:FindFirstChild("Players")
         if not playersFolder then return nil end
         
+        -- Check if lobby (no folders)
         if not playersFolder:FindFirstChild("Killers") and not playersFolder:FindFirstChild("Survivors") then
             return "Lobby"
         end
         
-        local killersFolder = playersFolder:FindFirstChild("Killers")
-        if killersFolder then
-            for _, character in ipairs(killersFolder:GetChildren()) do
-                if character:IsA("Model") and player.Character == character then
+        local killers = playersFolder:FindFirstChild("Killers")
+        if killers then
+            for _, char in ipairs(killers:GetChildren()) do
+                if char:IsA("Model") and player.Character == char then
                     return "Killers"
                 end
             end
         end
         
-        local survivorsFolder = playersFolder:FindFirstChild("Survivors")
-        if survivorsFolder then
-            for _, character in ipairs(survivorsFolder:GetChildren()) do
-                if character:IsA("Model") and player.Character == character then
+        local survivors = playersFolder:FindFirstChild("Survivors")
+        if survivors then
+            for _, char in ipairs(survivors:GetChildren()) do
+                if char:IsA("Model") and player.Character == char then
                     return "Survivors"
                 end
             end
@@ -202,51 +117,108 @@ local function getPlayerTeam(player)
     return success and result
 end
 
+-- Calculate angle to target (for rotation)
+local function getAngleToTarget(camera, targetPos)
+    local relative = camera.CFrame:PointToObjectSpace(targetPos)
+    return math.deg(math.atan2(relative.X, -relative.Z))
+end
+
+-- Create a new arrow object (Drawing)
+local function createArrow(targetPlayer, targetTeam)
+    if not drawingSupported then return nil end
+    
+    local imgData = loadArrowImage()
+    local isKiller = (targetTeam == "Killers")
+    local color = isKiller and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 80)
+    
+    -- Create image using Drawing API
+    local img = Drawing.new("Image")
+    if imgData then
+        img.Data = imgData  -- Load from local file bytes
+    else
+        -- Fallback: colored circle if image failed
+        img = Drawing.new("Circle")
+        img.Color = color
+        img.Filled = true
+        img.Radius = 15
+        img.NumSides = 30
+    end
+    img.Size = Vector2.new(30, 30)
+    img.Position = Vector2.new(0, 0)
+    img.Transparency = 1
+    img.Visible = false
+    img.ZIndex = 10
+    
+    -- Distance text
+    local text = Drawing.new("Text")
+    text.Text = "0m"
+    text.Color = Color3.fromRGB(255, 255, 255)
+    text.Size = 14
+    text.Center = true
+    text.Outline = true
+    text.OutlineColor = Color3.fromRGB(0, 0, 0)
+    text.Font = Drawing.Fonts.UI
+    text.Position = Vector2.new(0, 0)
+    text.Visible = false
+    text.ZIndex = 10
+    
+    return {
+        image = img,
+        text = text,
+        isKiller = isKiller,
+        playerName = targetPlayer.Name
+    }
+end
+
+-- Destroy arrow (cleanup)
+local function destroyArrow(arrowObj)
+    if not arrowObj then return end
+    pcall(function()
+        if arrowObj.image then arrowObj.image:Remove() end
+        if arrowObj.text then arrowObj.text:Remove() end
+    end)
+end
+
 -- Clean all arrows
 local function cleanAllArrows()
-    for _, arrow in pairs(arrows) do
-        pcall(function() arrow:Destroy() end)
+    for _, arrowObj in pairs(arrows) do
+        destroyArrow(arrowObj)
     end
     table.clear(arrows)
 end
 
--- Calculate correct angle to target
-local function getAngleToTarget(camera, targetPos, cameraPos)
-    local relativePos = camera.CFrame:PointToObjectSpace(targetPos)
-    local angle = math.atan2(relativePos.X, -relativePos.Z)
-    return math.deg(angle)
-end
-
--- Update arrows
+-- Update arrows (main loop)
 local function updateArrows()
     if not enabled then return end
-    if not arrowGui then 
-        createArrowGUI()
-        if not arrowGui then return end
-    end
-    
+    if not drawingSupported then return end
     if not localPlayer or not localPlayer.Character then return end
     
     local camera = getSafeCamera()
-    if not camera or not camera.CFrame then return end
+    if not camera then return end
     
-    local newPlayerTeam = getPlayerTeam(localPlayer)
+    -- Get current team
+    local newTeam = getPlayerTeam(localPlayer)
     
-    if newPlayerTeam == "Lobby" or not newPlayerTeam then
-        for _, arrow in pairs(arrows) do
-            arrow.Visible = false
+    -- If in lobby, hide everything
+    if newTeam == "Lobby" or not newTeam then
+        for _, arrowObj in pairs(arrows) do
+            if arrowObj.image then arrowObj.image.Visible = false end
+            if arrowObj.text then arrowObj.text.Visible = false end
         end
-        playerTeam = newPlayerTeam
+        playerTeam = newTeam
         return
     end
     
-    if newPlayerTeam ~= playerTeam then
+    -- Team changed? Clean all and reset
+    if newTeam ~= playerTeam then
         cleanAllArrows()
-        playerTeam = newPlayerTeam
+        playerTeam = newTeam
+        currentTargetTeam = nil
     end
     
     if not playerTeam then return end
     
+    -- Determine target team
     local targetTeam = playerTeam == "Killers" and "Survivors" or "Killers"
     
     if targetTeam ~= currentTargetTeam then
@@ -254,22 +226,21 @@ local function updateArrows()
         currentTargetTeam = targetTeam
     end
     
-    -- Get targets
+    -- Find targets
     local targets = {}
     local playersFolder = workspace:FindFirstChild("Players")
     if playersFolder then
         local targetFolder = playersFolder:FindFirstChild(targetTeam)
         if targetFolder then
-            for _, character in ipairs(targetFolder:GetChildren()) do
-                if character:IsA("Model") then
-                    local rootPart = getCharacterRootPart(character)
-                    if rootPart then
+            for _, char in ipairs(targetFolder:GetChildren()) do
+                if char:IsA("Model") then
+                    local root = getCharacterRootPart(char)
+                    if root then
                         for _, plr in pairs(players:GetPlayers()) do
-                            if plr.Character == character and plr ~= localPlayer then
+                            if plr.Character == char and plr ~= localPlayer then
                                 table.insert(targets, {
                                     player = plr,
-                                    character = character,
-                                    rootPart = rootPart
+                                    rootPart = root
                                 })
                                 break
                             end
@@ -280,123 +251,126 @@ local function updateArrows()
         end
     end
     
-    -- Clean up old arrows
-    for playerName, arrow in pairs(arrows) do
-        local stillTarget = false
-        for _, target in ipairs(targets) do
-            if target.player.Name == playerName then
-                stillTarget = true
+    -- Remove arrows for players who left
+    for name, arrowObj in pairs(arrows) do
+        local found = false
+        for _, t in ipairs(targets) do
+            if t.player.Name == name then
+                found = true
                 break
             end
         end
-        
-        if not stillTarget then
-            pcall(function() arrow:Destroy() end)
-            arrows[playerName] = nil
+        if not found then
+            destroyArrow(arrowObj)
+            arrows[name] = nil
         end
     end
     
-    local cameraPos = camera.CFrame.Position
+    local camPos = camera.CFrame.Position
+    local screenSize = camera.ViewportSize
     
-    -- Create/update arrows for targets
+    -- Update/create arrows for current targets
     for _, target in ipairs(targets) do
-        if target.rootPart then
-            local arrow = arrows[target.player.Name]
-            if not arrow then
-                arrow = createArrow(target.player, targetTeam)
-                if arrow then
-                    arrows[target.player.Name] = arrow
+        local arrowObj = arrows[target.player.Name]
+        if not arrowObj then
+            arrowObj = createArrow(target.player, targetTeam)
+            if arrowObj then
+                arrows[target.player.Name] = arrowObj
+            end
+        end
+        
+        if arrowObj then
+            local targetPos = target.rootPart.Position
+            local dist = (targetPos - camPos).Magnitude
+            local distM = math.floor(dist / 3)
+            
+            local angle = getAngleToTarget(camera, targetPos)
+            local rad = math.rad(angle)
+            local radius = 80
+            
+            -- Position around center
+            local cx = screenSize.X / 2 + math.sin(rad) * radius
+            local cy = screenSize.Y / 2 - math.cos(rad) * radius
+            
+            -- Keep on screen
+            cx = math.clamp(cx, 20, screenSize.X - 20)
+            cy = math.clamp(cy, 20, screenSize.Y - 20)
+            
+            -- Update image position
+            if arrowObj.image then
+                arrowObj.image.Position = Vector2.new(cx - 15, cy - 15)
+                arrowObj.image.Visible = true
+                
+                -- Try to rotate (works in some executors)
+                if arrowObj.image.Rotation then
+                    arrowObj.image.Rotation = angle
+                end
+                
+                -- Update color if needed
+                local correctColor = targetTeam == "Killers" and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 80)
+                if arrowObj.image.Color and arrowObj.image.Color ~= correctColor then
+                    arrowObj.image.Color = correctColor
                 end
             end
             
-            if arrow then
-                local targetPos = target.rootPart.Position
-                local distance = (targetPos - cameraPos).magnitude
-                local distanceText = math.floor(distance / 3)
-                
-                local text = arrow:FindFirstChild("Distance")
-                if text then
-                    text.Text = distanceText .. "m"
-                end
-                
-                arrow.Visible = true
-                
-                local angle = getAngleToTarget(camera, targetPos, cameraPos)
-                
-                local centerX = arrowGui.AbsoluteSize.X / 2
-                local centerY = arrowGui.AbsoluteSize.Y / 2
-                
-                local radius = 80
-                local angleRad = math.rad(angle)
-                
-                local x = centerX + math.sin(angleRad) * radius
-                local y = centerY - math.cos(angleRad) * radius
-                
-                x = math.clamp(x, 20, arrowGui.AbsoluteSize.X - 20)
-                y = math.clamp(y, 20, arrowGui.AbsoluteSize.Y - 20)
-                
-                arrow.Position = UDim2.new(0, x - 15, 0, y - 15)
-                
-                local img = arrow:FindFirstChild("ArrowImage")
-                if img then
-                    img.Rotation = angle + 90
-                end
+            -- Update text
+            if arrowObj.text then
+                arrowObj.text.Text = distM .. "m"
+                arrowObj.text.Position = Vector2.new(cx - 15, cy + 18)
+                arrowObj.text.Visible = true
             end
         end
     end
 end
 
--- Toggle arrows
+-- Public: Toggle arrows
 function Arrows:Toggle(state)
     enabled = state
     
     if enabled then
-        createArrowGUI()
+        -- Preload image
+        task.spawn(loadArrowImage)
         
+        -- Reset state
         playerTeam = nil
         currentTargetTeam = nil
         cleanAllArrows()
         
-        -- Preload arrow image
-        ensureArrowImage()
-        
+        -- Initial update
         updateArrows()
         
+        -- Connect render loop
         local conn = runService.RenderStepped:Connect(function()
-            if enabled then
-                updateArrows()
-            end
+            if enabled then updateArrows() end
         end)
         table.insert(arrowConnections, conn)
         
+        -- Handle round start/end
         local conn2 = workspace.ChildAdded:Connect(function()
             task.wait(0.5)
-            updateArrows()
+            if enabled then updateArrows() end
         end)
         table.insert(arrowConnections, conn2)
         
         local conn3 = workspace.ChildRemoved:Connect(function()
             task.wait(0.5)
-            cleanAllArrows()
-            playerTeam = nil
-            currentTargetTeam = nil
-            updateArrows()
+            if enabled then
+                cleanAllArrows()
+                playerTeam = nil
+                currentTargetTeam = nil
+                updateArrows()
+            end
         end)
         table.insert(arrowConnections, conn3)
         
     else
+        -- Disable: clean everything
         for _, conn in ipairs(arrowConnections) do
             pcall(function() conn:Disconnect() end)
         end
         table.clear(arrowConnections)
         
         cleanAllArrows()
-        
-        if arrowGui then
-            pcall(function() arrowGui:Destroy() end)
-            arrowGui = nil
-        end
-        
         playerTeam = nil
         currentTargetTeam = nil
     end
