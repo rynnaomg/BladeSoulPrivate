@@ -5,7 +5,7 @@ local Config = {}
 
 -- Game settings
 Config.GameName = "Forsaken Modded"
-Config.PlaceID = 124499025066593
+Config.PlaceID = "124499025066593"
 
 -- Group settings for Staff List
 Config.StaffGroup = {
