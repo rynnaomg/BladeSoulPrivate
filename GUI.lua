@@ -140,6 +140,9 @@ function GUI:Create()
     screenGui.ResetOnSpawn = false
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
+    -- Init modules
+    StaffList:Create(screenGui)
+
     -- ===== MINIMIZED BUTTON =====
     minimizedButton = Instance.new("TextButton")
     minimizedButton.Size = UDim2.new(0, 40, 0, 40)
