@@ -1,6 +1,6 @@
 -- modules/ESP.lua
 -- ESP module for Forsaken Hub
--- Version: 2.2 (QueryHitbox support)
+-- Version: 2.3 (Force visibility through invisibility)
 
 local ESP = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua?nocache=" .. tostring(os.time())))()
@@ -8,6 +8,7 @@ local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnao
 
 local players = Library.Services.Players
 local workspace = game:GetService("Workspace")
+local runService = game:GetService("RunService")
 local localPlayer = players.LocalPlayer
 
 local enabled = false
@@ -21,14 +22,6 @@ local function cleanupCharacterESP(character)
     if highlight then
         pcall(function() highlight:Destroy() end)
     end
-    -- Also clean from QueryHitbox
-    local qh = character:FindFirstChild("QueryHitbox")
-    if qh then
-        local highlight2 = qh:FindFirstChild("ForsakenESP")
-        if highlight2 then
-            pcall(function() highlight2:Destroy() end)
-        end
-    end
 end
 
 local function cleanupAllESP()
@@ -41,22 +34,27 @@ local function cleanupAllESP()
     table.clear(currentCharacters)
 end
 
+local function forceVisible(character)
+    if not character then return end
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            pcall(function()
+                part.LocalTransparencyModifier = 0
+            end)
+        end
+    end
+end
+
 local function createESP(character, team)
     if not character or not character:FindFirstChild("Humanoid") then return end
-    
-    if localPlayer and localPlayer.Character == character then
-        return
-    end
+    if localPlayer and localPlayer.Character == character then return end
     
     cleanupCharacterESP(character)
-
-    -- Use QueryHitbox if available (stays visible even when player is invisible)
-    local espTarget = character:FindFirstChild("QueryHitbox") or character
     
     local highlight = Instance.new("Highlight")
     highlight.Name = "ForsakenESP"
-    highlight.Adornee = espTarget
-    highlight.Parent = espTarget
+    highlight.Parent = character
+    highlight.Adornee = character
     highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     
     if team == "Killers" then
@@ -96,6 +94,7 @@ local function updateESP()
                         currentCharacters[character] = "Killers"
                     end
                 end
+                forceVisible(character)
             end
         end
     end
@@ -112,6 +111,7 @@ local function updateESP()
                         currentCharacters[character] = "Survivors"
                     end
                 end
+                forceVisible(character)
             end
         end
     end
@@ -130,6 +130,22 @@ function ESP:Toggle(state)
     if enabled then
         updateESP()
         
+        local renderConn = runService.RenderStepped:Connect(function()
+            if enabled then
+                local playersFolder = workspace:FindFirstChild("Players")
+                if playersFolder then
+                    for _, folder in ipairs(playersFolder:GetChildren()) do
+                        for _, character in ipairs(folder:GetChildren()) do
+                            if character:IsA("Model") and character ~= (localPlayer and localPlayer.Character) then
+                                forceVisible(character)
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+        table.insert(espConnections, renderConn)
+        
         spawn(function()
             while enabled do
                 updateESP()
@@ -147,7 +163,6 @@ function ESP:Toggle(state)
                 end)
                 table.insert(espConnections, conn)
             end
-            
             local survivorsFolder = playersFolder:FindFirstChild("Survivors")
             if survivorsFolder then
                 local conn = survivorsFolder.ChildAdded:Connect(function()
