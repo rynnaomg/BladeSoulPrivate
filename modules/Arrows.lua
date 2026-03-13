@@ -1,6 +1,6 @@
 -- modules/Arrows.lua
 -- Arrow module for Forsaken Hub
--- Version: 3.2 (Custom PNG arrow)
+-- Version: 3.3 (Discord PNG arrow)
 
 local Arrows = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
@@ -65,7 +65,7 @@ local function createArrowGUI()
     end
 end
 
--- Create a single arrow with CUSTOM PNG from assets folder
+-- Create a single arrow with DISCORD PNG
 local function createArrow(targetPlayer, targetTeam)
     if not arrowGui then return nil end
     
@@ -78,12 +78,13 @@ local function createArrow(targetPlayer, targetTeam)
         container.BackgroundTransparency = 1
         container.Parent = arrowGui
         
-        -- CUSTOM ARROW PNG from GitHub
+        -- DISCORD PNG ARROW
         local img = Instance.new("ImageLabel")
         img.Name = "ArrowImage"
         img.Size = UDim2.new(1, 0, 1, 0)
         img.BackgroundTransparency = 1
-        img.Image = "https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/assets/arrow.png"
+        -- Твоя Discord ссылка (без параметров в конце)
+        img.Image = "https://cdn.discordapp.com/attachments/1482032345644007535/1482032402435149986/arrow.png"
         img.ImageColor3 = targetTeam == "Killers" and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 80)
         img.Rotation = 0
         img.Parent = container
