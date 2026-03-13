@@ -3,8 +3,8 @@
 -- Version: 11.0 - ABSOLUTELY NO GUI ELEMENTS
 
 local Arrows = {}
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua?nocache=" .. tostring(os.time())))()
-local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua?nocache=" .. tostring(os.time())))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
+local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua"))()
 
 local players = Library.Services.Players
 local workspace = game:GetService("Workspace")
@@ -73,7 +73,6 @@ local function getAngleToTarget(camera, targetPos)
     return math.deg(math.atan2(rel.X, -rel.Z))
 end
 
--- NO GUI ELEMENTS HERE. ONLY DRAWING.
 local function createArrow(targetPlayer, targetTeam)
     if not drawingSupported then return nil end
     
@@ -81,13 +80,19 @@ local function createArrow(targetPlayer, targetTeam)
     local isKiller = (targetTeam == "Killers")
     local color = isKiller and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 80)
     
-    -- PURE DRAWING - NO Instance.new
     local img
     if imgData then
-        img = Drawing.new("Image")
-        img.Data = imgData
-        img.Size = Vector2.new(30, 30)
-    else
+        local s, result = pcall(function()
+            local i = Drawing.new("Image")
+            i.Data = imgData
+            i.Size = Vector2.new(30, 30)
+            return i
+        end)
+        if s and result then
+            img = result
+        end
+    end
+    if not img then
         img = Drawing.new("Circle")
         img.Color = color
         img.Filled = true
@@ -98,9 +103,8 @@ local function createArrow(targetPlayer, targetTeam)
     img.Position = Vector2.new(0, 0)
     img.Visible = false
     img.ZIndex = 10
-    img.Transparency = 1  -- This is fine, it's Drawing property
+    pcall(function() img.Transparency = 1 end)
     
-    -- PURE DRAWING TEXT
     local txt = Drawing.new("Text")
     txt.Text = "0m"
     txt.Color = Color3.fromRGB(255, 255, 255)
@@ -118,129 +122,3 @@ end
 
 local function destroyArrow(a)
     if not a then return end
-    pcall(function() if a.image then a.image:Remove() end end)
-    pcall(function() if a.text then a.text:Remove() end end)
-end
-
-local function cleanAllArrows()
-    for _, a in pairs(arrows) do destroyArrow(a) end
-    table.clear(arrows)
-end
-
-local function updateArrows()
-    if not enabled or not drawingSupported then return end
-    if not localPlayer or not localPlayer.Character then return end
-    
-    local cam = getSafeCamera()
-    if not cam then return end
-    
-    local newTeam = getPlayerTeam(localPlayer)
-    
-    if newTeam == "Lobby" or not newTeam then
-        for _, a in pairs(arrows) do
-            if a.image then a.image.Visible = false end
-            if a.text then a.text.Visible = false end
-        end
-        playerTeam = newTeam
-        return
-    end
-    
-    if newTeam ~= playerTeam then
-        cleanAllArrows()
-        playerTeam = newTeam
-        currentTargetTeam = nil
-    end
-    
-    if not playerTeam then return end
-    
-    local targetTeam = playerTeam == "Killers" and "Survivors" or "Killers"
-    if targetTeam ~= currentTargetTeam then
-        cleanAllArrows()
-        currentTargetTeam = targetTeam
-    end
-    
-    local targets = {}
-    local pf = workspace:FindFirstChild("Players")
-    if pf then
-        local tf = pf:FindFirstChild(targetTeam)
-        if tf then
-            for _, ch in ipairs(tf:GetChildren()) do
-                if ch:IsA("Model") then
-                    local root = getCharacterRootPart(ch)
-                    if root then
-                        for _, plr in pairs(players:GetPlayers()) do
-                            if plr.Character == ch and plr ~= localPlayer then
-                                table.insert(targets, {player = plr, root = root})
-                                break
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    for name, a in pairs(arrows) do
-        local found = false
-        for _, t in ipairs(targets) do if t.player.Name == name then found = true break end end
-        if not found then destroyArrow(a); arrows[name] = nil end
-    end
-    
-    local camPos = cam.CFrame.Position
-    local sz = cam.ViewportSize
-    
-    for _, t in ipairs(targets) do
-        local a = arrows[t.player.Name]
-        if not a then
-            a = createArrow(t.player, targetTeam)
-            if a then arrows[t.player.Name] = a end
-        end
-        
-        if a then
-            local tPos = t.root.Position
-            local dist = (tPos - camPos).Magnitude
-            local distM = math.floor(dist / 3)
-            local ang = getAngleToTarget(cam, tPos)
-            local rad = math.rad(ang)
-            local r = 80
-            local cx = sz.X/2 + math.sin(rad) * r
-            local cy = sz.Y/2 - math.cos(rad) * r
-            cx = math.clamp(cx, 20, sz.X - 20)
-            cy = math.clamp(cy, 20, sz.Y - 20)
-            
-            if a.image then
-                if a.image.Type == "Image" then
-                    a.image.Position = Vector2.new(cx - 15, cy - 15)
-                    if a.image.Rotation then a.image.Rotation = ang end
-                else
-                    a.image.Position = Vector2.new(cx, cy)
-                end
-                a.image.Visible = true
-            end
-            
-            if a.text then
-                a.text.Text = distM .. "m"
-                a.text.Position = Vector2.new(cx - 15, cy + 18)
-                a.text.Visible = true
-            end
-        end
-    end
-end
-
-function Arrows:Toggle(state)
-    enabled = state
-    if enabled then
-        task.spawn(loadArrowImage)
-        playerTeam = nil; currentTargetTeam = nil; cleanAllArrows()
-        updateArrows()
-        local c1 = runService.RenderStepped:Connect(function() if enabled then updateArrows() end end)
-        local c2 = workspace.ChildAdded:Connect(function() task.wait(0.5); if enabled then updateArrows() end end)
-        local c3 = workspace.ChildRemoved:Connect(function() task.wait(0.5); if enabled then cleanAllArrows(); playerTeam = nil; currentTargetTeam = nil; updateArrows() end end)
-        table.insert(arrowConnections, c1); table.insert(arrowConnections, c2); table.insert(arrowConnections, c3)
-    else
-        for _, c in ipairs(arrowConnections) do pcall(function() c:Disconnect() end) end
-        table.clear(arrowConnections); cleanAllArrows(); playerTeam = nil; currentTargetTeam = nil
-    end
-end
-
-return Arrows
