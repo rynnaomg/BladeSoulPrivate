@@ -1,6 +1,6 @@
 -- modules/Arrows.lua
 -- Arrow module for Forsaken Hub
--- Version: 9.1 (PURE DRAWING - NO GUI)
+-- Version: 10.0 (PURE DRAWING - FINAL)
 
 local Arrows = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
@@ -13,7 +13,7 @@ local localPlayer = players.LocalPlayer
 
 local enabled = false
 local arrowConnections = {}
-local arrows = {}
+local arrows = {} -- Table: playerName -> { image, text }
 local playerTeam = nil
 local currentTargetTeam = nil
 local arrowImageData = nil
@@ -116,7 +116,7 @@ local function getAngleToTarget(camera, targetPos)
     return math.deg(math.atan2(rel.X, -rel.Z))
 end
 
--- Create arrow (PURE DRAWING)
+-- Create arrow (PURE DRAWING - NO GUI ELEMENTS)
 local function createArrow(targetPlayer, targetTeam)
     if not drawingSupported then return nil end
     
@@ -124,27 +124,28 @@ local function createArrow(targetPlayer, targetTeam)
     local isKiller = (targetTeam == "Killers")
     local color = isKiller and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 80)
     
-    -- IMAGE (from file)
+    -- IMAGE (from file) - PURE DRAWING
     local img
     if imgData then
         img = Drawing.new("Image")
         img.Data = imgData
         img.Size = Vector2.new(30, 30)
     else
-        -- FALLBACK: circle
+        -- FALLBACK: circle if image failed
         img = Drawing.new("Circle")
         img.Color = color
         img.Filled = true
         img.Radius = 15
         img.NumSides = 30
-        img.Size = Vector2.new(30, 30)
+        -- Circle doesn't have Size, so we set position differently later
     end
+    
     img.Position = Vector2.new(0, 0)
     img.Visible = false
     img.ZIndex = 10
-    img.Transparency = 1  -- This works on Drawing objects!
+    img.Transparency = 1  -- This works on Drawing objects, not UICorner!
     
-    -- TEXT
+    -- TEXT - PURE DRAWING
     local txt = Drawing.new("Text")
     txt.Text = "0m"
     txt.Color = Color3.fromRGB(255, 255, 255)
@@ -176,7 +177,9 @@ end
 
 -- Clean all
 local function cleanAllArrows()
-    for _, a in pairs(arrows) do destroyArrow(a) end
+    for _, a in pairs(arrows) do 
+        destroyArrow(a) 
+    end
     table.clear(arrows)
 end
 
@@ -190,6 +193,7 @@ local function updateArrows()
     
     local newTeam = getPlayerTeam(localPlayer)
     
+    -- Hide arrows in lobby
     if newTeam == "Lobby" or not newTeam then
         for _, a in pairs(arrows) do
             if a.image then a.image.Visible = false end
@@ -199,6 +203,7 @@ local function updateArrows()
         return
     end
     
+    -- Team changed? Clean all
     if newTeam ~= playerTeam then
         cleanAllArrows()
         playerTeam = newTeam
@@ -207,6 +212,7 @@ local function updateArrows()
     
     if not playerTeam then return end
     
+    -- Determine target team
     local targetTeam = playerTeam == "Killers" and "Survivors" or "Killers"
     if targetTeam ~= currentTargetTeam then
         cleanAllArrows()
@@ -235,11 +241,14 @@ local function updateArrows()
         end
     end
     
-    -- Remove old
+    -- Remove arrows for players who left
     for name, a in pairs(arrows) do
         local found = false
         for _, t in ipairs(targets) do
-            if t.player.Name == name then found = true break end
+            if t.player.Name == name then 
+                found = true 
+                break 
+            end
         end
         if not found then
             destroyArrow(a)
@@ -250,11 +259,14 @@ local function updateArrows()
     local camPos = cam.CFrame.Position
     local sz = cam.ViewportSize
     
+    -- Update/create arrows
     for _, t in ipairs(targets) do
         local a = arrows[t.player.Name]
         if not a then
             a = createArrow(t.player, targetTeam)
-            if a then arrows[t.player.Name] = a end
+            if a then 
+                arrows[t.player.Name] = a 
+            end
         end
         
         if a then
@@ -266,20 +278,29 @@ local function updateArrows()
             local rad = math.rad(ang)
             local r = 80
             
+            -- Position around center
             local cx = sz.X/2 + math.sin(rad) * r
             local cy = sz.Y/2 - math.cos(rad) * r
             cx = math.clamp(cx, 20, sz.X - 20)
             cy = math.clamp(cy, 20, sz.Y - 20)
             
+            -- Update image
             if a.image then
-                a.image.Position = Vector2.new(cx - 15, cy - 15)
-                a.image.Visible = true
-                -- Try rotation (works in some executors)
-                if a.image.Rotation then
-                    a.image.Rotation = ang
+                -- Different handling for Image vs Circle
+                if a.image.Type == "Image" then
+                    a.image.Position = Vector2.new(cx - 15, cy - 15)
+                    -- Try rotation (works in some executors)
+                    if a.image.Rotation then
+                        a.image.Rotation = ang
+                    end
+                else
+                    -- Circle is positioned by center
+                    a.image.Position = Vector2.new(cx, cy)
                 end
+                a.image.Visible = true
             end
             
+            -- Update text
             if a.text then
                 a.text.Text = distM .. "m"
                 a.text.Position = Vector2.new(cx - 15, cy + 18)
@@ -294,17 +315,24 @@ function Arrows:Toggle(state)
     enabled = state
     
     if enabled then
+        -- Preload image
         task.spawn(loadArrowImage)
+        
+        -- Reset state
         playerTeam = nil
         currentTargetTeam = nil
         cleanAllArrows()
+        
+        -- Initial update
         updateArrows()
         
+        -- Connect render loop
         local c1 = runService.RenderStepped:Connect(function()
             if enabled then updateArrows() end
         end)
         table.insert(arrowConnections, c1)
         
+        -- Handle round start/end
         local c2 = workspace.ChildAdded:Connect(function()
             task.wait(0.5)
             if enabled then updateArrows() end
@@ -323,10 +351,12 @@ function Arrows:Toggle(state)
         table.insert(arrowConnections, c3)
         
     else
+        -- Disable: clean everything
         for _, c in ipairs(arrowConnections) do
             pcall(function() c:Disconnect() end)
         end
         table.clear(arrowConnections)
+        
         cleanAllArrows()
         playerTeam = nil
         currentTargetTeam = nil
