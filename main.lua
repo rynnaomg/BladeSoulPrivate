@@ -13,7 +13,13 @@ if GameCheck:IsCorrectGame() then
     Library:Notify("Welcome to Forsaken Hub", 3)
     
     -- Load main GUI
-    local GUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/GUI.lua"))()
+    local ok, GUI = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/GUI.lua?nocache=" .. tostring(os.time())))()
+    end)
+    if not ok then
+        warn("[Forsaken Hub] GUI failed to load: " .. tostring(GUI))
+        return
+    end
     GUI:Create()
 else
     print("[Forsaken Hub] Wrong game.")
