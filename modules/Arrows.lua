@@ -1,6 +1,6 @@
 -- modules/Arrows.lua
 -- Arrow module for Forsaken Hub
--- Version: 4.0 (FORCE SHOW ARROWS - гарантия появления)
+-- Version: 5.0 (With local file caching)
 
 local Arrows = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua"))()
@@ -11,12 +11,56 @@ local workspace = game:GetService("Workspace")
 local runService = game:GetService("RunService")
 local localPlayer = players.LocalPlayer
 
+-- For local file operations (supported by executors)
+local isFileSupported = pcall(function() return readfile and writefile and isfile end)
+local ARROW_CACHE_PATH = "ForsakenHub/cache/arrow.png"
+local ARROW_GITHUB_URL = "https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/assets/arrow.png"
+
 local enabled = false
 local arrowConnections = {}
 local arrowGui = nil
 local arrows = {}
 local playerTeam = nil
 local currentTargetTeam = nil
+local arrowImageLoaded = false
+
+-- Function to download and cache the arrow image
+local function ensureArrowImage()
+    if not isFileSupported then
+        warn("[Arrows] File operations not supported by this executor")
+        return "rbxassetid://6031090990" -- Fallback to Roblox arrow
+    end
+    
+    -- Check if file already exists in cache
+    if isfile(ARROW_CACHE_PATH) then
+        print("[Arrows] Arrow image found in cache")
+        arrowImageLoaded = true
+        return "rbxasset://" .. ARROW_CACHE_PATH
+    end
+    
+    -- Download from GitHub
+    print("[Arrows] Downloading arrow image from GitHub...")
+    local success, imageData = pcall(function()
+        return game:HttpGet(ARROW_GITHUB_URL)
+    end)
+    
+    if success and imageData then
+        -- Create cache folder if needed
+        local folderPath = "ForsakenHub/cache"
+        if not isfolder(folderPath) then
+            makefolder(folderPath)
+        end
+        
+        -- Save file
+        writefile(ARROW_CACHE_PATH, imageData)
+        print("[Arrows] Arrow image saved to cache")
+        arrowImageLoaded = true
+        return "rbxasset://" .. ARROW_CACHE_PATH
+    else
+        warn("[Arrows] Failed to download arrow image, using fallback")
+        return "rbxassetid://6031090990" -- Fallback to Roblox arrow
+    end
+end
 
 -- Safe function to get camera
 local function getSafeCamera()
@@ -46,7 +90,7 @@ local function getCharacterHumanoid(character)
     return success and result
 end
 
--- Create arrow GUI (FORCE CREATE)
+-- Create arrow GUI
 local function createArrowGUI()
     if arrowGui and arrowGui.Parent then
         return
@@ -70,7 +114,7 @@ local function createArrowGUI()
     end
 end
 
--- Create a single arrow (FORCE CREATE with test parameters)
+-- Create a single arrow (with cached image)
 local function createArrow(targetPlayer, targetTeam)
     if not arrowGui then 
         print("[Arrows] No GUI to create arrow")
@@ -78,6 +122,9 @@ local function createArrow(targetPlayer, targetTeam)
     end
     
     print("[Arrows] Creating arrow for", targetPlayer.Name, "team:", targetTeam)
+    
+    -- Get arrow image (cached or fallback)
+    local arrowImage = ensureArrowImage()
     
     local success, arrow = pcall(function()
         -- Main arrow container
@@ -87,18 +134,18 @@ local function createArrow(targetPlayer, targetTeam)
         container.Position = UDim2.new(0.5, -15, 0.5, -15)
         container.BackgroundTransparency = 1
         container.Parent = arrowGui
-        container.Visible = true  -- FORCE visible
+        container.Visible = true
         
-        -- YOUR ARROW IMAGE
+        -- CACHED ARROW IMAGE
         local img = Instance.new("ImageLabel")
         img.Name = "ArrowImage"
         img.Size = UDim2.new(1, 0, 1, 0)
         img.BackgroundTransparency = 1
-        img.Image = "rbxassetid://72385423495250"  -- Твой ассет!
+        img.Image = arrowImage
         img.ImageColor3 = targetTeam == "Killers" and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 80)
         img.Rotation = 0
         img.Parent = container
-        img.Visible = true  -- FORCE visible
+        img.Visible = true
         
         -- Distance text
         local distanceText = Instance.new("TextLabel")
@@ -111,7 +158,7 @@ local function createArrow(targetPlayer, targetTeam)
         distanceText.TextSize = 10
         distanceText.Font = Enum.Font.GothamBold
         distanceText.Parent = container
-        distanceText.Visible = true  -- FORCE visible
+        distanceText.Visible = true
         
         print("[Arrows] Arrow created successfully for", targetPlayer.Name)
         return container
@@ -176,37 +223,22 @@ local function getAngleToTarget(camera, targetPos, cameraPos)
     return math.deg(angle)
 end
 
--- Update arrows (simplified for debugging)
+-- Update arrows
 local function updateArrows()
-    if not enabled then 
-        print("[Arrows] Disabled, skipping update")
-        return 
-    end
-    
+    if not enabled then return end
     if not arrowGui then 
-        print("[Arrows] No GUI, creating...")
         createArrowGUI()
         if not arrowGui then return end
     end
     
-    if not localPlayer or not localPlayer.Character then 
-        print("[Arrows] No local player character")
-        return 
-    end
+    if not localPlayer or not localPlayer.Character then return end
     
-    -- Get camera
     local camera = getSafeCamera()
-    if not camera or not camera.CFrame then 
-        print("[Arrows] No camera")
-        return 
-    end
+    if not camera or not camera.CFrame then return end
     
-    -- Get local player team
     local newPlayerTeam = getPlayerTeam(localPlayer)
-    print("[Arrows] Local team:", newPlayerTeam or "nil")
     
     if newPlayerTeam == "Lobby" or not newPlayerTeam then
-        print("[Arrows] In lobby, hiding arrows")
         for _, arrow in pairs(arrows) do
             arrow.Visible = false
         end
@@ -215,7 +247,6 @@ local function updateArrows()
     end
     
     if newPlayerTeam ~= playerTeam then
-        print("[Arrows] Team changed from", playerTeam or "nil", "to", newPlayerTeam)
         cleanAllArrows()
         playerTeam = newPlayerTeam
     end
@@ -223,10 +254,8 @@ local function updateArrows()
     if not playerTeam then return end
     
     local targetTeam = playerTeam == "Killers" and "Survivors" or "Killers"
-    print("[Arrows] Target team:", targetTeam)
     
     if targetTeam ~= currentTargetTeam then
-        print("[Arrows] Target team changed to", targetTeam)
         cleanAllArrows()
         currentTargetTeam = targetTeam
     end
@@ -248,7 +277,6 @@ local function updateArrows()
                                     character = character,
                                     rootPart = rootPart
                                 })
-                                print("[Arrows] Found target:", plr.Name)
                                 break
                             end
                         end
@@ -257,8 +285,6 @@ local function updateArrows()
             end
         end
     end
-    
-    print("[Arrows] Total targets found:", #targets)
     
     -- Clean up old arrows
     for playerName, arrow in pairs(arrows) do
@@ -271,22 +297,9 @@ local function updateArrows()
         end
         
         if not stillTarget then
-            print("[Arrows] Removing arrow for", playerName)
             pcall(function() arrow:Destroy() end)
             arrows[playerName] = nil
         end
-    end
-    
-    -- If no targets, create a TEST arrow to verify GUI works
-    if #targets == 0 then
-        print("[Arrows] No targets, creating TEST arrow")
-        if not arrows["TEST"] then
-            local testArrow = createArrow({Name = "TEST"}, "Survivors")
-            if testArrow then
-                arrows["TEST"] = testArrow
-            end
-        end
-        return
     end
     
     local cameraPos = camera.CFrame.Position
@@ -296,7 +309,6 @@ local function updateArrows()
         if target.rootPart then
             local arrow = arrows[target.player.Name]
             if not arrow then
-                print("[Arrows] Creating arrow for", target.player.Name)
                 arrow = createArrow(target.player, targetTeam)
                 if arrow then
                     arrows[target.player.Name] = arrow
@@ -352,10 +364,11 @@ function Arrows:Toggle(state)
         currentTargetTeam = nil
         cleanAllArrows()
         
-        -- Force immediate update
+        -- Ensure arrow is cached before first use
+        ensureArrowImage()
+        
         updateArrows()
         
-        -- Update loop
         local conn = runService.RenderStepped:Connect(function()
             if enabled then
                 updateArrows()
@@ -363,7 +376,6 @@ function Arrows:Toggle(state)
         end)
         table.insert(arrowConnections, conn)
         
-        -- Listen for changes
         local conn2 = workspace.ChildAdded:Connect(function()
             task.wait(0.5)
             updateArrows()
