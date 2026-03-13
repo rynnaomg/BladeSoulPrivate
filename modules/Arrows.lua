@@ -84,7 +84,7 @@ local function createArrow(targetPlayer, targetTeam)
         img.Size = UDim2.new(1, 0, 1, 0)
         img.BackgroundTransparency = 1
         -- Твоя Discord ссылка (без параметров в конце)
-        img.Image = "https://cdn.discordapp.com/attachments/1482032345644007535/1482032402435149986/arrow.png"
+        img.Image = "https://cdn.discordapp.com/attachments/1482032345644007535/1482032402435149986/arrow.png?ex=69b579bb&is=69b4283b&hm=2a9ea0b797e25b988e4c3aa1fbb74213a80db6a5dc696698025550f67ca81b2e&"
         img.ImageColor3 = targetTeam == "Killers" and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 80)
         img.Rotation = 0
         img.Parent = container
