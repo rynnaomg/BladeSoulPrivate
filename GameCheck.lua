@@ -7,7 +7,7 @@ local Marketplace = game:GetService("MarketplaceService")
 
 function GameCheck:IsCorrectGame()
     -- Primary check by PlaceId
-    if game.PlaceId == Config.PlaceID then
+    if tostring(game.PlaceId) == Config.PlaceID then
         return true
     end
     
