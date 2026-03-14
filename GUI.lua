@@ -76,7 +76,6 @@ local function makeLabel(parent, text, posY)
     return l
 end
 
--- Toggle row
 local function makeToggle(parent, text, posY, default, callback)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, 0, 0, 38)
@@ -86,7 +85,6 @@ local function makeToggle(parent, text, posY, default, callback)
     row.Parent = parent
     addCorner(row, 8)
     addStroke(row, C.Border, 1)
-
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, -60, 1, 0)
     label.Position = UDim2.new(0, 12, 0, 0)
@@ -97,38 +95,36 @@ local function makeToggle(parent, text, posY, default, callback)
     label.Font = Enum.Font.Gotham
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = row
-
-    -- Toggle pill
     local pill = Instance.new("Frame")
     pill.Size = UDim2.new(0, 36, 0, 18)
     pill.Position = UDim2.new(1, -48, 0.5, -9)
     pill.BackgroundColor3 = default and C.Accent or C.Border
     pill.Parent = row
     addCorner(pill, 9)
-
     local dot = Instance.new("Frame")
     dot.Size = UDim2.new(0, 12, 0, 12)
     dot.Position = default and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)
     dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     dot.Parent = pill
     addCorner(dot, 6)
-
     local toggled = default or false
-
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, 0, 1, 0)
     btn.BackgroundTransparency = 1
     btn.Text = ""
     btn.Parent = row
-
     btn.MouseButton1Click:Connect(function()
         toggled = not toggled
         makeTween(pill, 0.2, {BackgroundColor3 = toggled and C.Accent or C.Border})
         makeTween(dot, 0.2, {Position = toggled and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)})
         if callback then callback(toggled) end
     end)
-
-    return row
+    local function setToggle(state)
+        toggled = state
+        makeTween(pill, 0.2, {BackgroundColor3 = state and C.Accent or C.Border})
+        makeTween(dot, 0.2, {Position = state and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)})
+    end
+    return row, setToggle
 end
 
 function GUI:Create()
@@ -414,7 +410,7 @@ function GUI:Create()
     local miscPage = pages["MISC"]
 
     makeLabel(miscPage, "UTILITIES", 8)
-    makeToggle(miscPage, "Staff List", 28, false, function(state)
+    local staffToggle = makeToggle(miscPage, "Staff List", 28, false, function(state)
         StaffList:Toggle(state)
     end)
 
