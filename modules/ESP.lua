@@ -1,6 +1,6 @@
 -- modules/ESP.lua
 -- ESP module for BladeSoul
--- Version: 3.1 (Accurate Box ESP)
+-- Version: 3.2 (Smart Box ESP)
 
 local ESP = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua?nocache=" .. tostring(os.time())))()
@@ -17,6 +17,17 @@ local espData = {}
 
 local KILLER_COLOR = Color3.fromRGB(255, 80, 80)
 local SURVIVOR_COLOR = Color3.fromRGB(80, 255, 80)
+
+local ignoredParts = {
+    CollisionHitbox = true,
+    QueryHitbox = true,
+    HumanoidRootPart = true,
+    Handle = true,
+    Machete = true,
+    Chainsaw = true,
+    Note = true,
+    Knife = true,
+}
 
 local function getTeam(character)
     local playersFolder = workspace:FindFirstChild("Players")
@@ -85,8 +96,7 @@ local function updateESPForPlayer(plr, objects)
     end
 
     local humanoid = character:FindFirstChild("Humanoid")
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not humanoid or not rootPart then
+    if not humanoid then
         for _, obj in pairs(objects) do pcall(function() obj.Visible = false end) end
         return
     end
@@ -104,19 +114,7 @@ local function updateESPForPlayer(plr, objects)
     local anyOnScreen = false
 
     for _, part in ipairs(character:GetDescendants()) do
-        local bodyParts = {
-            Head = true, Torso = true,
-            ["Left Arm"] = true, ["Right Arm"] = true,
-            ["Left Leg"] = true, ["Right Leg"] = true,
-            ["Upper Torso"] = true, ["Lower Torso"] = true,
-            ["LeftUpperArm"] = true, ["RightUpperArm"] = true,
-            ["LeftLowerArm"] = true, ["RightLowerArm"] = true,
-            ["LeftHand"] = true, ["RightHand"] = true,
-            ["LeftUpperLeg"] = true, ["RightUpperLeg"] = true,
-            ["LeftLowerLeg"] = true, ["RightLowerLeg"] = true,
-            ["LeftFoot"] = true, ["RightFoot"] = true,
-        }
-        if part:IsA("BasePart") and bodyParts[part.Name] then
+        if part:IsA("BasePart") and not ignoredParts[part.Name] then
             local size = part.Size
             local corners = {
                 Vector3.new( size.X/2,  size.Y/2,  size.Z/2),
@@ -147,25 +145,27 @@ local function updateESPForPlayer(plr, objects)
         return
     end
 
-    -- Верхняя линия
+    local pad = 3
+    minX = minX - pad
+    minY = minY - pad
+    maxX = maxX + pad
+    maxY = maxY + pad
+
     objects.line1.From = Vector2.new(minX, minY)
     objects.line1.To = Vector2.new(maxX, minY)
     objects.line1.Color = color
     objects.line1.Visible = true
 
-    -- Нижняя линия
     objects.line2.From = Vector2.new(minX, maxY)
     objects.line2.To = Vector2.new(maxX, maxY)
     objects.line2.Color = color
     objects.line2.Visible = true
 
-    -- Левая линия
     objects.line3.From = Vector2.new(minX, minY)
     objects.line3.To = Vector2.new(minX, maxY)
     objects.line3.Color = color
     objects.line3.Visible = true
 
-    -- Правая линия
     objects.line4.From = Vector2.new(maxX, minY)
     objects.line4.To = Vector2.new(maxX, maxY)
     objects.line4.Color = color
@@ -173,13 +173,11 @@ local function updateESPForPlayer(plr, objects)
 
     local centerX = (minX + maxX) / 2
 
-    -- Имя над боксом
     objects.nameText.Text = plr.Name
     objects.nameText.Position = Vector2.new(centerX, minY - 18)
     objects.nameText.Color = color
     objects.nameText.Visible = true
 
-    -- HP под именем
     local hp = math.floor(humanoid.Health)
     local maxHp = math.floor(humanoid.MaxHealth)
     objects.hpText.Text = hp .. "/" .. maxHp .. " HP"
