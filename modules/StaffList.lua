@@ -290,6 +290,7 @@ function StaffList:Create(parentGui)
     
     closeButton.MouseButton1Click:Connect(function()
         StaffList:Toggle(false)
+        if StaffList.onClose then StaffList.onClose() end
     end)
     
     -- Container for staff entries (ScrollingFrame)
