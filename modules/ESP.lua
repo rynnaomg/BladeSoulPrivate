@@ -1,6 +1,6 @@
 -- modules/ESP.lua
 -- ESP module for BladeSoul
--- Version: 2.4 (Full cleanup)
+-- Version: 2.5
 
 local ESP = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua?nocache=" .. tostring(os.time())))()
@@ -28,7 +28,6 @@ local function cleanupCharacterESP(character)
 end
 
 local function cleanupAllESP()
-    -- Чистим все известные объекты
     for obj in pairs(espObjects) do
         if obj and obj.Parent then
             pcall(function() obj:Destroy() end)
@@ -36,15 +35,15 @@ local function cleanupAllESP()
     end
     table.clear(espObjects)
     table.clear(currentCharacters)
-    
-    -- Дополнительно чистим весь workspace от остатков
+
+    -- Чистим через game.Players сервис
     for _, plr in pairs(players:GetPlayers()) do
         if plr.Character then
             cleanupCharacterESP(plr.Character)
         end
     end
-    
-    -- Чистим в папках команд если они ещё есть
+
+    -- Чистим через workspace.Players папку
     local playersFolder = workspace:FindFirstChild("Players")
     if playersFolder then
         for _, folder in ipairs(playersFolder:GetChildren()) do
@@ -64,15 +63,15 @@ end
 local function createESP(character, team)
     if not character or not character:FindFirstChild("Humanoid") then return end
     if isLocalPlayer(character) then return end
-    
+
     cleanupCharacterESP(character)
-    
+
     local highlight = Instance.new("Highlight")
     highlight.Name = "ForsakenESP"
     highlight.Parent = character
     highlight.Adornee = character
     highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    
+
     if team == "Killers" then
         highlight.FillColor = Color3.fromRGB(255, 80, 80)
         highlight.OutlineColor = Color3.fromRGB(200, 40, 40)
@@ -80,30 +79,30 @@ local function createESP(character, team)
         highlight.FillColor = Color3.fromRGB(80, 255, 80)
         highlight.OutlineColor = Color3.fromRGB(40, 200, 40)
     end
-    
-    highlight.FillTransparency = 0.8
+
+    highlight.FillTransparency = 1
     highlight.OutlineTransparency = 0
-    
+
     return highlight
 end
 
 local function updateESP()
     if not enabled then return end
-    
+
     local newCharacters = {}
     local playersFolder = workspace:FindFirstChild("Players")
     if not playersFolder then
         cleanupAllESP()
         return
     end
-    
+
     -- Чистим всех у кого нет команды (лобби)
     for character in pairs(currentCharacters) do
         local inTeam = false
         for _, folder in ipairs(playersFolder:GetChildren()) do
             if folder:IsA("Folder") and (folder.Name == "Killers" or folder.Name == "Survivors") then
                 for _, ch in ipairs(folder:GetChildren()) do
-                    if ch == character then inTeam = true break end
+                    if ch == character then inTeam = true; break end
                 end
             end
             if inTeam then break end
@@ -113,7 +112,7 @@ local function updateESP()
             currentCharacters[character] = nil
         end
     end
-    
+
     local killersFolder = playersFolder:FindFirstChild("Killers")
     if killersFolder then
         for _, character in ipairs(killersFolder:GetChildren()) do
@@ -129,7 +128,7 @@ local function updateESP()
             end
         end
     end
-    
+
     local survivorsFolder = playersFolder:FindFirstChild("Survivors")
     if survivorsFolder then
         for _, character in ipairs(survivorsFolder:GetChildren()) do
@@ -145,8 +144,7 @@ local function updateESP()
             end
         end
     end
-    
-    -- Чистим персонажей которых больше нет в папках команд
+
     for character in pairs(currentCharacters) do
         if not newCharacters[character] then
             cleanupCharacterESP(character)
@@ -157,20 +155,19 @@ end
 
 function ESP:Toggle(state)
     enabled = state
-    
+
     if enabled then
         updateESP()
-        
-        -- Каждый кадр принудительно ставим Transparency=0 и чистим локального игрока
+
         local renderConn = runService.RenderStepped:Connect(function()
             if not enabled then return end
-            
-            -- Убираем ESP с локального игрока если вдруг появился
+
+            -- Убираем ESP с локального игрока
             if localPlayer and localPlayer.Character then
                 cleanupCharacterESP(localPlayer.Character)
             end
-            
-            -- Принудительно делаем всех видимыми (антиневидимость)
+
+            -- Антиневидимость
             local playersFolder = workspace:FindFirstChild("Players")
             if not playersFolder then return end
             for _, folder in ipairs(playersFolder:GetChildren()) do
@@ -188,16 +185,14 @@ function ESP:Toggle(state)
             end
         end)
         table.insert(espConnections, renderConn)
-        
-        -- Периодическое обновление
+
         spawn(function()
             while enabled do
                 updateESP()
                 task.wait(0.5)
             end
         end)
-        
-        -- Слушаем добавление персонажей
+
         local playersFolder = workspace:FindFirstChild("Players")
         if playersFolder then
             local killersFolder = playersFolder:FindFirstChild("Killers")
@@ -215,8 +210,7 @@ function ESP:Toggle(state)
                 table.insert(espConnections, conn)
             end
         end
-        
-        -- Чистим когда персонаж удаляется из папки команды
+
         local connRemoved = workspace.DescendantRemoving:Connect(function(obj)
             if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
                 cleanupCharacterESP(obj)
@@ -224,14 +218,14 @@ function ESP:Toggle(state)
             end
         end)
         table.insert(espConnections, connRemoved)
-        
+
         local conn = workspace.ChildAdded:Connect(function(child)
             if child.Name == "Players" then
                 task.wait(0.5); updateESP()
             end
         end)
         table.insert(espConnections, conn)
-        
+
     else
         for _, conn in ipairs(espConnections) do
             pcall(function() conn:Disconnect() end)
