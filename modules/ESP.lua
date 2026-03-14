@@ -1,6 +1,6 @@
 -- modules/ESP.lua
 -- ESP module for BladeSoul
--- Version: 3.0 (Drawing Box ESP)
+-- Version: 3.1 (Accurate Box ESP)
 
 local ESP = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua?nocache=" .. tostring(os.time())))()
@@ -13,7 +13,7 @@ local localPlayer = players.LocalPlayer
 
 local enabled = false
 local espConnections = {}
-local espData = {} -- [playerName] = { box lines, text objects }
+local espData = {}
 
 local KILLER_COLOR = Color3.fromRGB(255, 80, 80)
 local SURVIVOR_COLOR = Color3.fromRGB(80, 255, 80)
@@ -36,16 +36,9 @@ local function getTeam(character)
     return nil
 end
 
-local function worldToScreen(pos)
-    local camera = workspace.CurrentCamera
-    local screenPos, onScreen = camera:WorldToViewportPoint(pos)
-    return Vector2.new(screenPos.X, screenPos.Y), onScreen, screenPos.Z
-end
-
 local function createESPObjects()
     local objects = {}
 
-    -- 4 линии бокса
     for i = 1, 4 do
         local line = Drawing.new("Line")
         line.Thickness = 1.5
@@ -54,7 +47,6 @@ local function createESPObjects()
         objects["line" .. i] = line
     end
 
-    -- Имя игрока
     local nameText = Drawing.new("Text")
     nameText.Size = 13
     nameText.Center = true
@@ -65,7 +57,6 @@ local function createESPObjects()
     nameText.ZIndex = 6
     objects.nameText = nameText
 
-    -- HP текст
     local hpText = Drawing.new("Text")
     hpText.Size = 12
     hpText.Center = true
@@ -89,90 +80,90 @@ end
 local function updateESPForPlayer(plr, objects)
     local character = plr.Character
     if not character then
-        for _, obj in pairs(objects) do
-            pcall(function() obj.Visible = false end)
-        end
+        for _, obj in pairs(objects) do pcall(function() obj.Visible = false end) end
         return
     end
 
     local humanoid = character:FindFirstChild("Humanoid")
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     if not humanoid or not rootPart then
-        for _, obj in pairs(objects) do
-            pcall(function() obj.Visible = false end)
-        end
+        for _, obj in pairs(objects) do pcall(function() obj.Visible = false end) end
         return
     end
 
     local team = getTeam(character)
     if not team then
-        for _, obj in pairs(objects) do
-            pcall(function() obj.Visible = false end)
-        end
+        for _, obj in pairs(objects) do pcall(function() obj.Visible = false end) end
         return
     end
 
     local color = team == "Killers" and KILLER_COLOR or SURVIVOR_COLOR
-
-    -- Получаем позицию корня
-    local rootPos = rootPart.Position
     local camera = workspace.CurrentCamera
 
-    -- Высота и ширина бокса (примерные размеры персонажа)
-    local height = 5.5
-    local width = 2.5
+    local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+    local anyOnScreen = false
 
-    -- Верхняя и нижняя точки персонажа
-    local topPos = rootPos + Vector3.new(0, height / 2, 0)
-    local bottomPos = rootPos - Vector3.new(0, height / 2, 0)
-
-    local topScreen, onScreen = worldToScreen(topPos)
-    local bottomScreen = worldToScreen(bottomPos)
-
-    if not onScreen then
-        for _, obj in pairs(objects) do
-            pcall(function() obj.Visible = false end)
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Name ~= "CollisionHitbox" and part.Name ~= "QueryHitbox" then
+            local size = part.Size
+            local corners = {
+                Vector3.new( size.X/2,  size.Y/2,  size.Z/2),
+                Vector3.new(-size.X/2,  size.Y/2,  size.Z/2),
+                Vector3.new( size.X/2, -size.Y/2,  size.Z/2),
+                Vector3.new(-size.X/2, -size.Y/2,  size.Z/2),
+                Vector3.new( size.X/2,  size.Y/2, -size.Z/2),
+                Vector3.new(-size.X/2,  size.Y/2, -size.Z/2),
+                Vector3.new( size.X/2, -size.Y/2, -size.Z/2),
+                Vector3.new(-size.X/2, -size.Y/2, -size.Z/2),
+            }
+            for _, corner in ipairs(corners) do
+                local worldPos = part.CFrame:PointToWorldSpace(corner)
+                local screenPos, onScreen = camera:WorldToViewportPoint(worldPos)
+                if onScreen and screenPos.Z > 0 then
+                    anyOnScreen = true
+                    if screenPos.X < minX then minX = screenPos.X end
+                    if screenPos.Y < minY then minY = screenPos.Y end
+                    if screenPos.X > maxX then maxX = screenPos.X end
+                    if screenPos.Y > maxY then maxY = screenPos.Y end
+                end
+            end
         end
+    end
+
+    if not anyOnScreen then
+        for _, obj in pairs(objects) do pcall(function() obj.Visible = false end) end
         return
     end
 
-    -- Размер бокса на экране
-    local boxHeight = math.abs(topScreen.Y - bottomScreen.Y)
-    local boxWidth = boxHeight * (width / height)
-
-    local left = topScreen.X - boxWidth / 2
-    local right = topScreen.X + boxWidth / 2
-    local top = topScreen.Y
-    local bottom = bottomScreen.Y
-
-    -- Рисуем 4 линии бокса
-    -- Верхняя
-    objects.line1.From = Vector2.new(left, top)
-    objects.line1.To = Vector2.new(right, top)
+    -- Верхняя линия
+    objects.line1.From = Vector2.new(minX, minY)
+    objects.line1.To = Vector2.new(maxX, minY)
     objects.line1.Color = color
     objects.line1.Visible = true
 
-    -- Нижняя
-    objects.line2.From = Vector2.new(left, bottom)
-    objects.line2.To = Vector2.new(right, bottom)
+    -- Нижняя линия
+    objects.line2.From = Vector2.new(minX, maxY)
+    objects.line2.To = Vector2.new(maxX, maxY)
     objects.line2.Color = color
     objects.line2.Visible = true
 
-    -- Левая
-    objects.line3.From = Vector2.new(left, top)
-    objects.line3.To = Vector2.new(left, bottom)
+    -- Левая линия
+    objects.line3.From = Vector2.new(minX, minY)
+    objects.line3.To = Vector2.new(minX, maxY)
     objects.line3.Color = color
     objects.line3.Visible = true
 
-    -- Правая
-    objects.line4.From = Vector2.new(right, top)
-    objects.line4.To = Vector2.new(right, bottom)
+    -- Правая линия
+    objects.line4.From = Vector2.new(maxX, minY)
+    objects.line4.To = Vector2.new(maxX, maxY)
     objects.line4.Color = color
     objects.line4.Visible = true
 
+    local centerX = (minX + maxX) / 2
+
     -- Имя над боксом
     objects.nameText.Text = plr.Name
-    objects.nameText.Position = Vector2.new(topScreen.X, top - 18)
+    objects.nameText.Position = Vector2.new(centerX, minY - 18)
     objects.nameText.Color = color
     objects.nameText.Visible = true
 
@@ -180,7 +171,7 @@ local function updateESPForPlayer(plr, objects)
     local hp = math.floor(humanoid.Health)
     local maxHp = math.floor(humanoid.MaxHealth)
     objects.hpText.Text = hp .. "/" .. maxHp .. " HP"
-    objects.hpText.Position = Vector2.new(topScreen.X, top - 32)
+    objects.hpText.Position = Vector2.new(centerX, minY - 32)
     objects.hpText.Color = Color3.fromRGB(255, 255, 255)
     objects.hpText.Visible = true
 end
@@ -217,7 +208,6 @@ function ESP:Toggle(state)
     enabled = state
 
     if enabled then
-        -- RenderStepped — обновляем каждый кадр
         local renderConn = runService.RenderStepped:Connect(function()
             if not enabled then return end
 
@@ -234,7 +224,6 @@ function ESP:Toggle(state)
                 end)
             end
 
-            -- Чистим ушедших игроков
             for name, objects in pairs(espData) do
                 if not activeNames[name] then
                     destroyESPObjects(objects)
