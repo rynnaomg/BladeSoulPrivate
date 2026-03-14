@@ -1,6 +1,6 @@
 -- modules/ESP.lua
 -- ESP module for BladeSoul
--- Version: 3.2 (Smart Box ESP)
+-- Version: 3.3 (Shift Lock Fix)
 
 local ESP = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua?nocache=" .. tostring(os.time())))()
@@ -9,6 +9,7 @@ local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnao
 local players = game:GetService("Players")
 local workspace = game:GetService("Workspace")
 local runService = game:GetService("RunService")
+local guiService = game:GetService("GuiService")
 local localPlayer = players.LocalPlayer
 
 local enabled = false
@@ -110,6 +111,9 @@ local function updateESPForPlayer(plr, objects)
     local color = team == "Killers" and KILLER_COLOR or SURVIVOR_COLOR
     local camera = workspace.CurrentCamera
 
+    -- Компенсация GUI inset (верхняя полоска телефона/ПК)
+    local inset = guiService:GetGuiInset()
+
     local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
     local anyOnScreen = false
 
@@ -128,13 +132,15 @@ local function updateESPForPlayer(plr, objects)
             }
             for _, corner in ipairs(corners) do
                 local worldPos = part.CFrame:PointToWorldSpace(corner)
-                local screenPos, onScreen = camera:WorldToScreenPoint(worldPos)
+                local screenPos, onScreen = camera:WorldToViewportPoint(worldPos)
                 if onScreen and screenPos.Z > 0 then
                     anyOnScreen = true
-                    if screenPos.X < minX then minX = screenPos.X end
-                    if screenPos.Y < minY then minY = screenPos.Y end
-                    if screenPos.X > maxX then maxX = screenPos.X end
-                    if screenPos.Y > maxY then maxY = screenPos.Y end
+                    local sx = screenPos.X - inset.X
+                    local sy = screenPos.Y - inset.Y
+                    if sx < minX then minX = sx end
+                    if sy < minY then minY = sy end
+                    if sx > maxX then maxX = sx end
+                    if sy > maxY then maxY = sy end
                 end
             end
         end
