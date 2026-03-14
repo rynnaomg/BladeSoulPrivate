@@ -1,6 +1,6 @@
 -- modules/ESP.lua
 -- ESP module for BladeSoul
--- Version: 3.5 (shift lock fix)
+-- Version: 3.6 (clean, no compensation)
 
 local ESP = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua?nocache=" .. tostring(os.time())))()
@@ -9,7 +9,6 @@ local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnao
 local players = game:GetService("Players")
 local workspace = game:GetService("Workspace")
 local runService = game:GetService("RunService")
-local guiService = game:GetService("GuiService")
 local localPlayer = players.LocalPlayer
 
 local enabled = false
@@ -46,14 +45,6 @@ local function getTeam(character)
         end
     end
     return nil
-end
-
--- Конвертация 3D точки в 2D с компенсацией shift lock через GuiInset
-local function toScreen(pos)
-    local camera = workspace.CurrentCamera
-    local screenPos, onScreen = camera:WorldToViewportPoint(pos)
-    local inset = guiService:GetGuiInset()
-    return Vector2.new(screenPos.X - inset.X, screenPos.Y - inset.Y), onScreen, screenPos.Z
 end
 
 local function createESPObjects()
@@ -117,6 +108,7 @@ local function updateESPForPlayer(plr, objects)
     end
 
     local color = team == "Killers" and KILLER_COLOR or SURVIVOR_COLOR
+    local camera = workspace.CurrentCamera
 
     local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
     local anyOnScreen = false
@@ -136,13 +128,14 @@ local function updateESPForPlayer(plr, objects)
             }
             for _, corner in ipairs(corners) do
                 local worldPos = part.CFrame:PointToWorldSpace(corner)
-                local screenVec, onScreen, depth = toScreen(worldPos)
-                if onScreen and depth > 0 then
+                -- WorldToScreenPoint учитывает топбар и shift lock правильно
+                local screenPos, onScreen = camera:WorldToScreenPoint(worldPos)
+                if onScreen and screenPos.Z > 0 then
                     anyOnScreen = true
-                    if screenVec.X < minX then minX = screenVec.X end
-                    if screenVec.Y < minY then minY = screenVec.Y end
-                    if screenVec.X > maxX then maxX = screenVec.X end
-                    if screenVec.Y > maxY then maxY = screenVec.Y end
+                    if screenPos.X < minX then minX = screenPos.X end
+                    if screenPos.Y < minY then minY = screenPos.Y end
+                    if screenPos.X > maxX then maxX = screenPos.X end
+                    if screenPos.Y > maxY then maxY = screenPos.Y end
                 end
             end
         end
@@ -160,38 +153,38 @@ local function updateESPForPlayer(plr, objects)
     maxY = maxY + pad
 
     objects.line1.From = Vector2.new(minX, minY)
-    objects.line1.To = Vector2.new(maxX, minY)
+    objects.line1.To   = Vector2.new(maxX, minY)
     objects.line1.Color = color
     objects.line1.Visible = true
 
     objects.line2.From = Vector2.new(minX, maxY)
-    objects.line2.To = Vector2.new(maxX, maxY)
+    objects.line2.To   = Vector2.new(maxX, maxY)
     objects.line2.Color = color
     objects.line2.Visible = true
 
     objects.line3.From = Vector2.new(minX, minY)
-    objects.line3.To = Vector2.new(minX, maxY)
+    objects.line3.To   = Vector2.new(minX, maxY)
     objects.line3.Color = color
     objects.line3.Visible = true
 
     objects.line4.From = Vector2.new(maxX, minY)
-    objects.line4.To = Vector2.new(maxX, maxY)
+    objects.line4.To   = Vector2.new(maxX, maxY)
     objects.line4.Color = color
     objects.line4.Visible = true
 
     local centerX = (minX + maxX) / 2
 
-    objects.nameText.Text = plr.Name
+    objects.nameText.Text     = plr.Name
     objects.nameText.Position = Vector2.new(centerX, minY - 18)
-    objects.nameText.Color = color
-    objects.nameText.Visible = true
+    objects.nameText.Color    = color
+    objects.nameText.Visible  = true
 
-    local hp = math.floor(humanoid.Health)
+    local hp    = math.floor(humanoid.Health)
     local maxHp = math.floor(humanoid.MaxHealth)
-    objects.hpText.Text = hp .. "/" .. maxHp .. " HP"
+    objects.hpText.Text     = hp .. "/" .. maxHp .. " HP"
     objects.hpText.Position = Vector2.new(centerX, minY - 32)
-    objects.hpText.Color = Color3.fromRGB(255, 255, 255)
-    objects.hpText.Visible = true
+    objects.hpText.Color    = Color3.fromRGB(255, 255, 255)
+    objects.hpText.Visible  = true
 end
 
 local function getTargetPlayers()
