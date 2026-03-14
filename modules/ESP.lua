@@ -128,7 +128,7 @@ local function updateESPForPlayer(plr, objects)
             }
             for _, corner in ipairs(corners) do
                 local worldPos = part.CFrame:PointToWorldSpace(corner)
-                local screenPos, onScreen = camera:WorldToViewportPoint(worldPos)
+                local screenPos, onScreen = camera:WorldToScreenPoint(worldPos)
                 if onScreen and screenPos.Z > 0 then
                     anyOnScreen = true
                     if screenPos.X < minX then minX = screenPos.X end
