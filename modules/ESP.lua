@@ -104,7 +104,7 @@ local function updateESPForPlayer(plr, objects)
     local anyOnScreen = false
 
     for _, part in ipairs(character:GetDescendants()) do
-        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Name ~= "CollisionHitbox" and part.Name ~= "QueryHitbox" then
+        if part:IsA("BasePart") and part.Name ~= "CollisionHitbox" and part.Name ~= "QueryHitbox" then
             local size = part.Size
             local corners = {
                 Vector3.new( size.X/2,  size.Y/2,  size.Z/2),
