@@ -104,7 +104,19 @@ local function updateESPForPlayer(plr, objects)
     local anyOnScreen = false
 
     for _, part in ipairs(character:GetDescendants()) do
-        if part:IsA("BasePart") and part.Name ~= "CollisionHitbox" and part.Name ~= "QueryHitbox" then
+        local bodyParts = {
+            Head = true, Torso = true,
+            ["Left Arm"] = true, ["Right Arm"] = true,
+            ["Left Leg"] = true, ["Right Leg"] = true,
+            ["Upper Torso"] = true, ["Lower Torso"] = true,
+            ["LeftUpperArm"] = true, ["RightUpperArm"] = true,
+            ["LeftLowerArm"] = true, ["RightLowerArm"] = true,
+            ["LeftHand"] = true, ["RightHand"] = true,
+            ["LeftUpperLeg"] = true, ["RightUpperLeg"] = true,
+            ["LeftLowerLeg"] = true, ["RightLowerLeg"] = true,
+            ["LeftFoot"] = true, ["RightFoot"] = true,
+        }
+        if part:IsA("BasePart") and bodyParts[part.Name] then
             local size = part.Size
             local corners = {
                 Vector3.new( size.X/2,  size.Y/2,  size.Z/2),
