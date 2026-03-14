@@ -81,8 +81,8 @@ local function createESP(character, team)
         highlight.OutlineColor = Color3.fromRGB(40, 200, 40)
     end
     
-    highlight.FillTransparency = 0.4
-    highlight.OutlineTransparency = 0.2
+    highlight.FillTransparency = 0.8
+    highlight.OutlineTransparency = 0
     
     return highlight
 end
@@ -95,6 +95,23 @@ local function updateESP()
     if not playersFolder then
         cleanupAllESP()
         return
+    end
+    
+    -- Чистим всех у кого нет команды (лобби)
+    for character in pairs(currentCharacters) do
+        local inTeam = false
+        for _, folder in ipairs(playersFolder:GetChildren()) do
+            if folder:IsA("Folder") and (folder.Name == "Killers" or folder.Name == "Survivors") then
+                for _, ch in ipairs(folder:GetChildren()) do
+                    if ch == character then inTeam = true break end
+                end
+            end
+            if inTeam then break end
+        end
+        if not inTeam then
+            cleanupCharacterESP(character)
+            currentCharacters[character] = nil
+        end
     end
     
     local killersFolder = playersFolder:FindFirstChild("Killers")
