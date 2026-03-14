@@ -1,237 +1,255 @@
 -- modules/ESP.lua
 -- ESP module for BladeSoul
--- Version: 2.5
+-- Version: 3.0 (Drawing Box ESP)
 
 local ESP = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua?nocache=" .. tostring(os.time())))()
 local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Config.lua?nocache=" .. tostring(os.time())))()
 
-local players = Library.Services.Players
+local players = game:GetService("Players")
 local workspace = game:GetService("Workspace")
 local runService = game:GetService("RunService")
 local localPlayer = players.LocalPlayer
 
 local enabled = false
 local espConnections = {}
-local espObjects = {}
-local currentCharacters = {}
+local espData = {} -- [playerName] = { box lines, text objects }
 
-local function cleanupCharacterESP(character)
-    if not character then return end
-    for _, obj in ipairs(character:GetDescendants()) do
-        if obj.Name == "ForsakenESP" then
-            pcall(function() obj:Destroy() end)
-        end
-    end
-    local highlight = character:FindFirstChild("ForsakenESP")
-    if highlight then pcall(function() highlight:Destroy() end) end
-end
+local KILLER_COLOR = Color3.fromRGB(255, 80, 80)
+local SURVIVOR_COLOR = Color3.fromRGB(80, 255, 80)
 
-local function cleanupAllESP()
-    for obj in pairs(espObjects) do
-        if obj and obj.Parent then
-            pcall(function() obj:Destroy() end)
-        end
-    end
-    table.clear(espObjects)
-    table.clear(currentCharacters)
-
-    -- Чистим через game.Players сервис
-    for _, plr in pairs(players:GetPlayers()) do
-        if plr.Character then
-            cleanupCharacterESP(plr.Character)
-        end
-    end
-
-    -- Чистим через workspace.Players папку
+local function getTeam(character)
     local playersFolder = workspace:FindFirstChild("Players")
-    if playersFolder then
-        for _, folder in ipairs(playersFolder:GetChildren()) do
-            for _, character in ipairs(folder:GetChildren()) do
-                if character:IsA("Model") then
-                    cleanupCharacterESP(character)
-                end
-            end
+    if not playersFolder then return nil end
+    local killers = playersFolder:FindFirstChild("Killers")
+    if killers then
+        for _, ch in ipairs(killers:GetChildren()) do
+            if ch == character then return "Killers" end
         end
     end
+    local survivors = playersFolder:FindFirstChild("Survivors")
+    if survivors then
+        for _, ch in ipairs(survivors:GetChildren()) do
+            if ch == character then return "Survivors" end
+        end
+    end
+    return nil
 end
 
-local function isLocalPlayer(character)
-    return localPlayer and localPlayer.Character == character
+local function worldToScreen(pos)
+    local camera = workspace.CurrentCamera
+    local screenPos, onScreen = camera:WorldToViewportPoint(pos)
+    return Vector2.new(screenPos.X, screenPos.Y), onScreen, screenPos.Z
 end
 
-local function createESP(character, team)
-    if not character or not character:FindFirstChild("Humanoid") then return end
-    if isLocalPlayer(character) then return end
+local function createESPObjects()
+    local objects = {}
 
-    cleanupCharacterESP(character)
-
-    local highlight = Instance.new("Highlight")
-    highlight.Name = "ForsakenESP"
-    highlight.Parent = character
-    highlight.Adornee = character
-    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-
-    if team == "Killers" then
-        highlight.FillColor = Color3.fromRGB(255, 80, 80)
-        highlight.OutlineColor = Color3.fromRGB(200, 40, 40)
-    elseif team == "Survivors" then
-        highlight.FillColor = Color3.fromRGB(80, 255, 80)
-        highlight.OutlineColor = Color3.fromRGB(40, 200, 40)
+    -- 4 линии бокса
+    for i = 1, 4 do
+        local line = Drawing.new("Line")
+        line.Thickness = 1.5
+        line.Visible = false
+        line.ZIndex = 5
+        objects["line" .. i] = line
     end
 
-    highlight.FillTransparency = 1
-    highlight.OutlineTransparency = 0
+    -- Имя игрока
+    local nameText = Drawing.new("Text")
+    nameText.Size = 13
+    nameText.Center = true
+    nameText.Outline = true
+    nameText.OutlineColor = Color3.fromRGB(0, 0, 0)
+    nameText.Font = Drawing.Fonts.UI
+    nameText.Visible = false
+    nameText.ZIndex = 6
+    objects.nameText = nameText
 
-    return highlight
+    -- HP текст
+    local hpText = Drawing.new("Text")
+    hpText.Size = 12
+    hpText.Center = true
+    hpText.Outline = true
+    hpText.OutlineColor = Color3.fromRGB(0, 0, 0)
+    hpText.Font = Drawing.Fonts.UI
+    hpText.Visible = false
+    hpText.ZIndex = 6
+    objects.hpText = hpText
+
+    return objects
 end
 
-local function updateESP()
-    if not enabled then return end
+local function destroyESPObjects(objects)
+    if not objects then return end
+    for _, obj in pairs(objects) do
+        pcall(function() obj:Remove() end)
+    end
+end
 
-    local newCharacters = {}
-    local playersFolder = workspace:FindFirstChild("Players")
-    if not playersFolder then
-        cleanupAllESP()
+local function updateESPForPlayer(plr, objects)
+    local character = plr.Character
+    if not character then
+        for _, obj in pairs(objects) do
+            pcall(function() obj.Visible = false end)
+        end
         return
     end
 
-    -- Чистим всех у кого нет команды (лобби)
-    for character in pairs(currentCharacters) do
-        local inTeam = false
-        for _, folder in ipairs(playersFolder:GetChildren()) do
-            if folder:IsA("Folder") and (folder.Name == "Killers" or folder.Name == "Survivors") then
-                for _, ch in ipairs(folder:GetChildren()) do
-                    if ch == character then inTeam = true; break end
-                end
-            end
-            if inTeam then break end
+    local humanoid = character:FindFirstChild("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not rootPart then
+        for _, obj in pairs(objects) do
+            pcall(function() obj.Visible = false end)
         end
-        if not inTeam then
-            cleanupCharacterESP(character)
-            currentCharacters[character] = nil
-        end
+        return
     end
 
-    local killersFolder = playersFolder:FindFirstChild("Killers")
-    if killersFolder then
-        for _, character in ipairs(killersFolder:GetChildren()) do
-            if character:IsA("Model") and character:FindFirstChild("Humanoid") and not isLocalPlayer(character) then
-                newCharacters[character] = "Killers"
-                if not currentCharacters[character] then
-                    local esp = createESP(character, "Killers")
-                    if esp then
-                        espObjects[esp] = true
-                        currentCharacters[character] = "Killers"
+    local team = getTeam(character)
+    if not team then
+        for _, obj in pairs(objects) do
+            pcall(function() obj.Visible = false end)
+        end
+        return
+    end
+
+    local color = team == "Killers" and KILLER_COLOR or SURVIVOR_COLOR
+
+    -- Получаем позицию корня
+    local rootPos = rootPart.Position
+    local camera = workspace.CurrentCamera
+
+    -- Высота и ширина бокса (примерные размеры персонажа)
+    local height = 5.5
+    local width = 2.5
+
+    -- Верхняя и нижняя точки персонажа
+    local topPos = rootPos + Vector3.new(0, height / 2, 0)
+    local bottomPos = rootPos - Vector3.new(0, height / 2, 0)
+
+    local topScreen, onScreen = worldToScreen(topPos)
+    local bottomScreen = worldToScreen(bottomPos)
+
+    if not onScreen then
+        for _, obj in pairs(objects) do
+            pcall(function() obj.Visible = false end)
+        end
+        return
+    end
+
+    -- Размер бокса на экране
+    local boxHeight = math.abs(topScreen.Y - bottomScreen.Y)
+    local boxWidth = boxHeight * (width / height)
+
+    local left = topScreen.X - boxWidth / 2
+    local right = topScreen.X + boxWidth / 2
+    local top = topScreen.Y
+    local bottom = bottomScreen.Y
+
+    -- Рисуем 4 линии бокса
+    -- Верхняя
+    objects.line1.From = Vector2.new(left, top)
+    objects.line1.To = Vector2.new(right, top)
+    objects.line1.Color = color
+    objects.line1.Visible = true
+
+    -- Нижняя
+    objects.line2.From = Vector2.new(left, bottom)
+    objects.line2.To = Vector2.new(right, bottom)
+    objects.line2.Color = color
+    objects.line2.Visible = true
+
+    -- Левая
+    objects.line3.From = Vector2.new(left, top)
+    objects.line3.To = Vector2.new(left, bottom)
+    objects.line3.Color = color
+    objects.line3.Visible = true
+
+    -- Правая
+    objects.line4.From = Vector2.new(right, top)
+    objects.line4.To = Vector2.new(right, bottom)
+    objects.line4.Color = color
+    objects.line4.Visible = true
+
+    -- Имя над боксом
+    objects.nameText.Text = plr.Name
+    objects.nameText.Position = Vector2.new(topScreen.X, top - 18)
+    objects.nameText.Color = color
+    objects.nameText.Visible = true
+
+    -- HP под именем
+    local hp = math.floor(humanoid.Health)
+    local maxHp = math.floor(humanoid.MaxHealth)
+    objects.hpText.Text = hp .. "/" .. maxHp .. " HP"
+    objects.hpText.Position = Vector2.new(topScreen.X, top - 32)
+    objects.hpText.Color = Color3.fromRGB(255, 255, 255)
+    objects.hpText.Visible = true
+end
+
+local function getTargetPlayers()
+    local result = {}
+    local playersFolder = workspace:FindFirstChild("Players")
+    if not playersFolder then return result end
+
+    for _, folder in ipairs(playersFolder:GetChildren()) do
+        if folder:IsA("Folder") and (folder.Name == "Killers" or folder.Name == "Survivors") then
+            for _, character in ipairs(folder:GetChildren()) do
+                if character:IsA("Model") then
+                    for _, plr in ipairs(players:GetPlayers()) do
+                        if plr ~= localPlayer and plr.Character == character then
+                            table.insert(result, plr)
+                        end
                     end
                 end
             end
         end
     end
+    return result
+end
 
-    local survivorsFolder = playersFolder:FindFirstChild("Survivors")
-    if survivorsFolder then
-        for _, character in ipairs(survivorsFolder:GetChildren()) do
-            if character:IsA("Model") and character:FindFirstChild("Humanoid") and not isLocalPlayer(character) then
-                newCharacters[character] = "Survivors"
-                if not currentCharacters[character] then
-                    local esp = createESP(character, "Survivors")
-                    if esp then
-                        espObjects[esp] = true
-                        currentCharacters[character] = "Survivors"
-                    end
-                end
-            end
-        end
+local function cleanupAll()
+    for name, objects in pairs(espData) do
+        destroyESPObjects(objects)
     end
-
-    for character in pairs(currentCharacters) do
-        if not newCharacters[character] then
-            cleanupCharacterESP(character)
-            currentCharacters[character] = nil
-        end
-    end
+    espData = {}
 end
 
 function ESP:Toggle(state)
     enabled = state
 
     if enabled then
-        updateESP()
-
+        -- RenderStepped — обновляем каждый кадр
         local renderConn = runService.RenderStepped:Connect(function()
             if not enabled then return end
 
-            -- Убираем ESP с локального игрока
-            if localPlayer and localPlayer.Character then
-                cleanupCharacterESP(localPlayer.Character)
+            local targets = getTargetPlayers()
+            local activeNames = {}
+
+            for _, plr in ipairs(targets) do
+                activeNames[plr.Name] = true
+                if not espData[plr.Name] then
+                    espData[plr.Name] = createESPObjects()
+                end
+                pcall(function()
+                    updateESPForPlayer(plr, espData[plr.Name])
+                end)
             end
 
-            -- Антиневидимость
-            local playersFolder = workspace:FindFirstChild("Players")
-            if not playersFolder then return end
-            for _, folder in ipairs(playersFolder:GetChildren()) do
-                if folder:IsA("Folder") then
-                    for _, character in ipairs(folder:GetChildren()) do
-                        if character:IsA("Model") and not isLocalPlayer(character) then
-                            for _, part in ipairs(character:GetDescendants()) do
-                                if part:IsA("BasePart") and part.Transparency == 1 then
-                                    pcall(function() part.Transparency = 0 end)
-                                end
-                            end
-                        end
-                    end
+            -- Чистим ушедших игроков
+            for name, objects in pairs(espData) do
+                if not activeNames[name] then
+                    destroyESPObjects(objects)
+                    espData[name] = nil
                 end
             end
         end)
         table.insert(espConnections, renderConn)
-
-        spawn(function()
-            while enabled do
-                updateESP()
-                task.wait(0.5)
-            end
-        end)
-
-        local playersFolder = workspace:FindFirstChild("Players")
-        if playersFolder then
-            local killersFolder = playersFolder:FindFirstChild("Killers")
-            if killersFolder then
-                local conn = killersFolder.ChildAdded:Connect(function()
-                    task.wait(0.1); updateESP()
-                end)
-                table.insert(espConnections, conn)
-            end
-            local survivorsFolder = playersFolder:FindFirstChild("Survivors")
-            if survivorsFolder then
-                local conn = survivorsFolder.ChildAdded:Connect(function()
-                    task.wait(0.1); updateESP()
-                end)
-                table.insert(espConnections, conn)
-            end
-        end
-
-        local connRemoved = workspace.DescendantRemoving:Connect(function(obj)
-            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
-                cleanupCharacterESP(obj)
-                currentCharacters[obj] = nil
-            end
-        end)
-        table.insert(espConnections, connRemoved)
-
-        local conn = workspace.ChildAdded:Connect(function(child)
-            if child.Name == "Players" then
-                task.wait(0.5); updateESP()
-            end
-        end)
-        table.insert(espConnections, conn)
 
     else
         for _, conn in ipairs(espConnections) do
             pcall(function() conn:Disconnect() end)
         end
         table.clear(espConnections)
-        cleanupAllESP()
+        cleanupAll()
     end
 end
 
