@@ -1,6 +1,6 @@
 -- modules/ESP.lua
 -- ESP module for BladeSoul
--- Version: 3.3 (Shift Lock Fix)
+-- Version: 3.4
 
 local ESP = {}
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnaomg/BladeSoulPrivate/main/Library.lua?nocache=" .. tostring(os.time())))()
@@ -9,7 +9,6 @@ local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/rynnao
 local players = game:GetService("Players")
 local workspace = game:GetService("Workspace")
 local runService = game:GetService("RunService")
-local guiService = game:GetService("GuiService")
 local localPlayer = players.LocalPlayer
 
 local enabled = false
@@ -89,6 +88,18 @@ local function destroyESPObjects(objects)
     end
 end
 
+-- Конвертация 3D точки в 2D экранные координаты с учётом shift lock
+local function toScreen(pos)
+    local camera = workspace.CurrentCamera
+    local screenPos, onScreen = camera:WorldToViewportPoint(pos)
+
+    -- Компенсация shift lock: смещение viewport относительно реального экрана
+    local viewportSize = camera.ViewportSize
+    local screenSize = Vector2.new(viewportSize.X, viewportSize.Y)
+
+    return Vector2.new(screenPos.X, screenPos.Y), onScreen, screenPos.Z
+end
+
 local function updateESPForPlayer(plr, objects)
     local character = plr.Character
     if not character then
@@ -111,11 +122,16 @@ local function updateESPForPlayer(plr, objects)
     local color = team == "Killers" and KILLER_COLOR or SURVIVOR_COLOR
     local camera = workspace.CurrentCamera
 
-    -- Компенсация GUI inset (верхняя полоска телефона/ПК)
-    local inset = guiService:GetGuiInset()
-
     local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
     local anyOnScreen = false
+
+    -- Shift lock offset компенсация через CameraOffset humanoid'а
+    local shiftOffset = Vector3.new(0, 0, 0)
+    local localChar = localPlayer and localPlayer.Character
+    local localHum = localChar and localChar:FindFirstChildOfClass("Humanoid")
+    if localHum then
+        shiftOffset = localHum.CameraOffset
+    end
 
     for _, part in ipairs(character:GetDescendants()) do
         if part:IsA("BasePart") and not ignoredParts[part.Name] then
@@ -135,12 +151,10 @@ local function updateESPForPlayer(plr, objects)
                 local screenPos, onScreen = camera:WorldToViewportPoint(worldPos)
                 if onScreen and screenPos.Z > 0 then
                     anyOnScreen = true
-                    local sx = screenPos.X - inset.X
-                    local sy = screenPos.Y - inset.Y
-                    if sx < minX then minX = sx end
-                    if sy < minY then minY = sy end
-                    if sx > maxX then maxX = sx end
-                    if sy > maxY then maxY = sy end
+                    if screenPos.X < minX then minX = screenPos.X end
+                    if screenPos.Y < minY then minY = screenPos.Y end
+                    if screenPos.X > maxX then maxX = screenPos.X end
+                    if screenPos.Y > maxY then maxY = screenPos.Y end
                 end
             end
         end
@@ -150,6 +164,24 @@ local function updateESPForPlayer(plr, objects)
         for _, obj in pairs(objects) do pcall(function() obj.Visible = false end) end
         return
     end
+
+    -- Компенсация shift lock смещения на экране
+    local shiftScreenOffset = Vector2.new(0, 0)
+    if shiftOffset.X ~= 0 or shiftOffset.Y ~= 0 or shiftOffset.Z ~= 0 then
+        local camCF = camera.CFrame
+        local offsetWorld = camCF:PointToWorldSpace(shiftOffset) - camCF.Position
+        local baseScreen = camera:WorldToViewportPoint(camera.CFrame.Position + camera.CFrame.LookVector * 10)
+        local offsetScreen = camera:WorldToViewportPoint(camera.CFrame.Position + camera.CFrame.LookVector * 10 + offsetWorld)
+        shiftScreenOffset = Vector2.new(
+            offsetScreen.X - baseScreen.X,
+            offsetScreen.Y - baseScreen.Y
+        )
+    end
+
+    minX = minX - shiftScreenOffset.X
+    maxX = maxX - shiftScreenOffset.X
+    minY = minY - shiftScreenOffset.Y
+    maxY = maxY - shiftScreenOffset.Y
 
     local pad = 3
     minX = minX - pad
